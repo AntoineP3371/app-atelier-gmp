@@ -140,6 +140,11 @@
   .op-item{display:flex;align-items:center;gap:8px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:8px 10px}
   .op-item input.opname{flex:1;border:1.5px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.88rem;color:var(--text);background:#fff;outline:none;font-family:inherit}
   .op-item input.opname:focus{border-color:var(--admin)}
+  /* Drag & drop machines */
+  .machine-item.dragging{opacity:.4;border:2px dashed var(--admin)}
+  .machine-item.drag-over{border:2px solid var(--admin);background:var(--admin-light)}
+  .drag-handle{cursor:grab;font-size:16px;color:var(--muted);padding:0 4px;user-select:none;flex-shrink:0}
+  .drag-handle:active{cursor:grabbing}
 </style>
 </head>
 <body>
@@ -196,9 +201,9 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ─── CONSTANTES ────────────────────────────────────────────────────────────────
-const SLOTS   = ["08h-10h","10h-12h","12h-14h","14h-16h","16h-18h"];
-const SLOT_AM = ["08h-10h","10h-12h"];
-const SLOT_PM = ["12h-14h","14h-16h","16h-18h"];
+const SLOTS   = ["08h-12h","14h-18h"];
+const SLOT_AM = ["08h-12h"];
+const SLOT_PM = ["14h-18h"];
 const ADMIN_PW = "admin1234";
 const DEFAULT_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316"];
 
@@ -343,41 +348,48 @@ function openModal(html,fullscreen){
 function closeModal(){ document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); stopCarousel(); }
 function stopCarousel(){ if(carouselTimer){ clearInterval(carouselTimer); carouselTimer=null; } }
 function startMachineCarousel(){ stopCarousel(); if(!machines.length){ alert("Aucune machine."); return; } carouselIndex=0; openFullScreenCarouselPage(); carouselTimer=setInterval(nextCarouselPage,5000); }
-function nextCarouselPage(){ carouselIndex=(carouselIndex+1)%machines.length; openFullScreenCarouselPage(); }
-function openFullScreenCarouselPage(){ openModal(buildFullscreenMachineAgenda(machines[carouselIndex]),true); }
+function getCarouselPages(){ var pages=[]; for(var i=0;i<machines.length;i+=3){ pages.push(machines.slice(i,i+3)); } return pages; }
+function nextCarouselPage(){ var pages=getCarouselPages(); carouselIndex=(carouselIndex+1)%pages.length; openFullScreenCarouselPage(); }
+function openFullScreenCarouselPage(){ openModal(buildFullscreenMachineAgenda(),true); }
 function getTwoWeekDays(){ var days=[]; var d=new Date(currentMon); while(days.length<10){ var day=new Date(d); if(day.getDay()!==0&&day.getDay()!==6) days.push(day); d.setDate(d.getDate()+1); } return days; }
 
-function buildFullscreenMachineAgenda(machine){
+function buildFullscreenMachineAgenda(){
+  var pages=getCarouselPages();
+  var page=pages[carouselIndex]||[];
   var days=getTwoWeekDays();
   var start=days[0],end=days[days.length-1];
-  return "<div class='carousel-header-full'>"+
-    "<div><h2>Planning de "+esc(machine)+"</h2>"+
-    "<div class='carousel-subtitle'>"+start.toLocaleDateString('fr-FR')+" – "+end.toLocaleDateString('fr-FR')+" · page "+(carouselIndex+1)+" / "+machines.length+"</div></div>"+
+  var machineLabels=page.map(m=>esc(m)).join(", ");
+  var html="<div class='carousel-header-full'>"+
+    "<div><h2>Planning — "+machineLabels+"</h2>"+
+    "<div class='carousel-subtitle'>"+start.toLocaleDateString('fr-FR')+" – "+end.toLocaleDateString('fr-FR')+" · page "+(carouselIndex+1)+" / "+pages.length+"</div></div>"+
     "<button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>"+
-    "<div class='table-wrap'>"+buildMachineAgendaTable(machine,days)+"</div>"+
+    "<div class='table-wrap'>"+buildMultiMachineAgendaTable(page,days)+"</div>"+
     "<div style='font-size:.82rem;color:var(--muted);margin-top:12px'>Affichage en lecture seule – page automatique toutes les 5 secondes.</div>";
+  return html;
 }
 
-function buildMachineAgendaTable(machine,days){
-  var color=getMachineColor(machine);
-  var colorLabel=hexToRgba(color,0.10);
+function buildMultiMachineAgendaTable(machineList,days){
   var html="<table><thead><tr><th>Machine / Créneau</th>";
   days.forEach(d=>{ html+="<th>"+d.toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'})+"</th>"; });
   html+="</tr></thead><tbody>";
-  SLOTS.forEach((slot,idx)=>{
-    html+="<tr>";
-    if(idx===0) html+="<td class='machine-label' rowspan='"+SLOTS.length+"' style='background:"+colorLabel+";border-left:4px solid "+color+"'><span class='machine-color-dot' style='background:"+color+"'></span>"+esc(machine)+"</td>";
-    days.forEach(day=>{
-      var key=machine+"|"+fmt(day)+"|"+slot;
-      var r=bookings[key],bl=disabled[key];
-      var tc=isToday(day)?" today-col":"";
-      var cls,content,inlineStyle="";
-      if(bl){ cls="disabled"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>"; }
-      else if(r){ cls="booked"+tc; inlineStyle=" style='background:"+hexToRgba(color,0.12)+";border-left:3px solid "+color+"!important'"; content="<div class='slot-time'>"+slot+"</div><div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div><div class='slot-sub'>"+(r.operateur?esc(r.operateur)+" · ":"")+esc(r.projet)+"</div>"; }
-      else { cls="free"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>"; }
-      html+="<td><div class='slot-cell "+cls+"'"+inlineStyle+">"+content+"</div></td>";
+  machineList.forEach(machine=>{
+    var color=getMachineColor(machine);
+    var colorLabel=hexToRgba(color,0.10);
+    SLOTS.forEach((slot,idx)=>{
+      html+="<tr>";
+      if(idx===0) html+="<td class='machine-label' rowspan='"+SLOTS.length+"' style='background:"+colorLabel+";border-left:4px solid "+color+"'><span class='machine-color-dot' style='background:"+color+"'></span>"+esc(machine)+"</td>";
+      days.forEach(day=>{
+        var key=machine+"|"+fmt(day)+"|"+slot;
+        var r=bookings[key],bl=disabled[key];
+        var tc=isToday(day)?" today-col":"";
+        var cls,content,inlineStyle="";
+        if(bl){ cls="disabled"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>"; }
+        else if(r){ cls="booked"+tc; inlineStyle=" style='background:"+hexToRgba(color,0.12)+";border-left:3px solid "+color+"!important'"; content="<div class='slot-time'>"+slot+"</div><div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div><div class='slot-sub'>"+(r.operateur?esc(r.operateur)+" · ":"")+esc(r.projet)+"</div>"; }
+        else { cls="free"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>"; }
+        html+="<td><div class='slot-cell "+cls+"'"+inlineStyle+">"+content+"</div></td>";
+      });
+      html+="</tr>";
     });
-    html+="</tr>";
   });
   html+="</tbody></table>";
   return html;
@@ -426,11 +438,12 @@ function applyAdminUI(){
   document.getElementById("grid").classList.toggle("is-admin",isAdmin);
 }
 
-// ─── MACHINE MANAGER ──────────────────────────────────────────────────────────
+// ─── MACHINE MANAGER avec drag & drop ────────────────────────────────────────
 function openMachineManager(){
   var rows=machines.map((m,i)=>{
     var color=getMachineColor(m);
-    return "<div class='machine-item' id='mrow-"+i+"'>"+
+    return "<div class='machine-item' id='mrow-"+i+"' draggable='true' ondragstart='dragStart(event,"+i+")' ondragover='dragOver(event)' ondrop='dragDrop(event,"+i+")' ondragleave='dragLeave(event)'>"+
+      "<span class='drag-handle' title='Glisser pour réordonner'>⠿</span>"+
       "<input type='text' class='mname' id='mname-"+i+"' value='"+esc(m)+"' placeholder='Nom de la machine'>"+
       "<span class='color-label'>Couleur&nbsp;</span>"+
       "<input type='color' id='mcolor-"+i+"' value='"+color+"'>"+
@@ -439,7 +452,7 @@ function openMachineManager(){
   }).join("");
   openModal(
     "<h2>✏️ Gérer les machines</h2>"+
-    "<div class='meta'>Renommez, choisissez une couleur ou supprimez des machines.</div>"+
+    "<div class='meta'>Glissez-déposez les lignes pour réordonner. Renommez ou changez la couleur.</div>"+
     "<div class='machine-list' id='mlist'>"+rows+"</div>"+
     "<button class='btn-add' onclick='addMRow()'>+ Ajouter une machine</button>"+
     "<div class='modal-actions' style='margin-top:18px'>"+
@@ -448,7 +461,27 @@ function openMachineManager(){
     "</div>"
   );
 }
-function addMRow(){ var list=document.getElementById("mlist"); var i=list.children.length; var color=DEFAULT_COLORS[i%DEFAULT_COLORS.length]; var d=document.createElement("div"); d.className="machine-item"; d.id="mrow-"+i; d.innerHTML="<input type='text' class='mname' id='mname-"+i+"' placeholder='Nom de la machine'><span class='color-label'>Couleur&nbsp;</span><input type='color' id='mcolor-"+i+"' value='"+color+"'><button class='icon-btn remove' onclick='removeMRow("+i+")'>✕</button>"; list.appendChild(d); }
+
+// ─── DRAG & DROP ──────────────────────────────────────────────────────────────
+var dragSrcIndex = null;
+function dragStart(e, i){ dragSrcIndex=i; e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; }
+function dragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.classList.add('drag-over'); }
+function dragLeave(e){ e.currentTarget.classList.remove('drag-over'); }
+function dragDrop(e, targetIndex){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  document.querySelectorAll('#mlist .machine-item').forEach(el=>el.classList.remove('dragging'));
+  if(dragSrcIndex===null || dragSrcIndex===targetIndex) return;
+  // Lire l'état actuel du DOM
+  var items=[...document.querySelectorAll('#mlist .machine-item')];
+  var srcItem=items[dragSrcIndex];
+  var tgtItem=items[targetIndex];
+  var list=document.getElementById('mlist');
+  if(dragSrcIndex < targetIndex){ list.insertBefore(srcItem, tgtItem.nextSibling); }
+  else { list.insertBefore(srcItem, tgtItem); }
+  dragSrcIndex=null;
+}
+function addMRow(){ var list=document.getElementById("mlist"); var i=list.children.length; var color=DEFAULT_COLORS[i%DEFAULT_COLORS.length]; var d=document.createElement("div"); d.className="machine-item"; d.id="mrow-"+i; d.draggable=true; d.setAttribute("ondragstart","dragStart(event,"+i+")"); d.setAttribute("ondragover","dragOver(event)"); d.setAttribute("ondrop","dragDrop(event,"+i+")"); d.setAttribute("ondragleave","dragLeave(event)"); d.innerHTML="<span class='drag-handle' title='Glisser pour réordonner'>⠿</span><input type='text' class='mname' id='mname-"+i+"' placeholder='Nom de la machine'><span class='color-label'>Couleur&nbsp;</span><input type='color' id='mcolor-"+i+"' value='"+color+"'><button class='icon-btn remove' onclick='removeMRow("+i+")'>✕</button>"; list.appendChild(d); }
 function removeMRow(i){ var r=document.getElementById("mrow-"+i); if(r) r.remove(); }
 async function saveMachines(){
   var items=document.querySelectorAll("#mlist .machine-item");
