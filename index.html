@@ -696,96 +696,72 @@ async function restoreHistory(index){
 }
 
 // ─── EXPORT iCAL ──────────────────────────────────────────────────────────────
+const ICAL_EDGE_URL = SUPABASE_URL + '/functions/v1/ical';
+var icalUrls = []; // stockage temporaire des URLs pour éviter les problèmes d'échappement
+
 function openIcalExport(){
+  icalUrls = [];
   var html = "<h2>📅 Abonnements iCal</h2>"+
-    "<div class='meta'>Copiez le lien correspondant et abonnez-vous dans votre calendrier (Google Calendar, Apple Calendar, Outlook…) pour être informé en temps réel.</div>";
+    "<div class='meta'>Cliquez sur <strong>Copier l'URL</strong> puis collez-la dans votre application calendrier.</div>";
 
   // Par machine
-  html += "<div class='ical-section'><h3>Par machine</h3>";
+  html += "<div class='ical-section'><h3>🏭 Par machine</h3>";
   machines.forEach(function(m){
-    var url = buildIcalUrl('machine', m);
+    var idx = icalUrls.length;
+    icalUrls.push(ICAL_EDGE_URL + '?type=machine&value=' + encodeURIComponent(m));
     html += "<div class='ical-item'>"+
       "<span class='ical-item-label'>"+esc(m)+"</span>"+
-      "<button class='ical-copy-btn' onclick='copyIcal(\""+jsesc(url)+"\")'>📋 Copier le lien</button>"+
+      "<button class='ical-copy-btn' onclick='copyIcalUrl("+idx+")'>📋 Copier l'URL</button>"+
     "</div>";
   });
   html += "</div>";
 
   // Par opérateur
-  html += "<div class='ical-section'><h3>Par opérateur</h3>";
+  html += "<div class='ical-section'><h3>👤 Par opérateur</h3>";
   operateurs.forEach(function(op){
-    var url = buildIcalUrl('operateur', op);
+    var idx = icalUrls.length;
+    icalUrls.push(ICAL_EDGE_URL + '?type=operateur&value=' + encodeURIComponent(op));
     html += "<div class='ical-item'>"+
       "<span class='ical-item-label'>"+esc(op)+"</span>"+
-      "<button class='ical-copy-btn' onclick='copyIcal(\""+jsesc(url)+"\")'>📋 Copier le lien</button>"+
+      "<button class='ical-copy-btn' onclick='copyIcalUrl("+idx+")'>📋 Copier l'URL</button>"+
     "</div>";
   });
   html += "</div>";
 
-  html += "<div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>";
+  html += "<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;font-size:.78rem;color:#15803d;margin-bottom:12px'>"+
+    "💡 <strong>Google Calendar :</strong> Autres agendas → + → Via une URL → coller l'URL<br>"+
+    "💡 <strong>Apple Calendar :</strong> Fichier → Nouvel abonnement de calendrier → coller l'URL<br>"+
+    "💡 <strong>Outlook :</strong> Ajouter un calendrier → S'abonner via le web → coller l'URL"+
+  "</div>"+
+  "<div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>";
   openModal(html);
 }
 
-function buildIcalUrl(type, value){
-  // Génère un lien ical "webcal://" pointant vers une route qui sert le calendrier
-  // Comme l'app est un fichier HTML local, on génère un lien data: avec le contenu iCal
-  return window.location.href.split('?')[0] + '?ical='+encodeURIComponent(type)+'/'+encodeURIComponent(value);
-}
-
-function copyIcal(url){
-  // Générer le contenu iCal et le télécharger
-  var urlObj = new URL(url, window.location.href);
-  var icalParam = urlObj.searchParams.get('ical');
-  if(!icalParam){ navigator.clipboard.writeText(url).then(function(){ showToast("📋 Lien copié !"); }); return; }
-  var parts = icalParam.split('/');
-  var type = decodeURIComponent(parts[0]);
-  var value = decodeURIComponent(parts.slice(1).join('/'));
-  var ical = generateIcal(type, value);
-  var blob = new Blob([ical], {type:'text/calendar;charset=utf-8'});
-  var burl = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = burl;
-  a.download = 'planning_'+value.replace(/\s+/g,'_')+'.ics';
-  a.click();
-  URL.revokeObjectURL(burl);
-  showToast("📥 Fichier .ics téléchargé pour "+value);
-}
-
-function generateIcal(type, value){
-  var lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//BM GMP//Reservations//FR',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-CALNAME:Planning '+value,
-    'X-WR-TIMEZONE:Europe/Paris'
-  ];
-  // Filtrer les réservations selon le type
-  for(var key in bookings){
-    var r = bookings[key];
-    var p = key.split('|');
-    var machine = p[0], date = p[1], slot = p[2];
-    if(type === 'machine' && machine !== value) continue;
-    if(type === 'operateur' && r.operateur !== value) continue;
-    // Calculer les horaires
-    var isAM = slot === '08h-12h';
-    var startHour = isAM ? '080000' : '140000';
-    var endHour = isAM ? '120000' : '180000';
-    var dateStr = date.replace(/-/g,'');
-    var uid = 'bmgmp-'+key.replace(/[\|\s]/g,'-')+'@bmgmp';
-    var summary = machine + ' — ' + (r.nom||'') + ' ' + (r.prenom||'');
-    if(r.projet) summary += ' (' + r.projet + ')';
-    lines.push('BEGIN:VEVENT');
-    lines.push('UID:'+uid);
-    lines.push('DTSTART;TZID=Europe/Paris:'+dateStr+'T'+startHour);
-    lines.push('DTEND;TZID=Europe/Paris:'+dateStr+'T'+endHour);
-    lines.push('SUMMARY:'+summary.replace(/[,;\\]/g,'\\$&').replace(/\n/g,'\\n'));
-    lines.push('DESCRIPTION:Machine: '+machine+'\\nOpérateur: '+(r.operateur||'—')+'\\nProjet: '+(r.projet||'—'));
-    lines.push('END:VEVENT');
+function copyIcalUrl(idx){
+  var text = icalUrls[idx];
+  if(!text) return;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      showToast("📋 URL copiée !");
+    }).catch(function(){
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
   }
-  lines.push('END:VCALENDAR');
-  return lines.join('\r\n');
+}
+
+function fallbackCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try{ document.execCommand('copy'); showToast("📋 URL copiée !"); }
+  catch(e){ showToast("❌ Impossible de copier"); }
+  document.body.removeChild(ta);
 }
 
 // ─── OPERATEUR MANAGER ────────────────────────────────────────────────────────
