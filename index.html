@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Réservation Machines</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg:#f7f8fc; --surface:#fff; --border:#e2e6f0;
+    --primary:#2563eb; --primary-light:#dbeafe; --primary-dark:#1d4ed8;
+    --booked:#bfdbfe; --booked-border:#3b82f6; --free-text:#16a34a;
+    --text:#1e293b; --muted:#64748b;
+    --danger:#ef4444; --danger-light:#fee2e2;
+    --admin:#7c3aed; --admin-light:#ede9fe; --admin-dark:#5b21b6;
+    --disabled-bg:#f1f5f9; --disabled-border:#94a3b8;
+    --radius:10px; --shadow:0 2px 12px rgba(0,0,0,.07);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:24px 16px}
+  .logo-bar{display:flex;justify-content:center;align-items:center;padding:16px 0 20px}
+  .logo-bar img{max-height:70px;width:auto;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.10))}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+  header .icon{width:42px;height:42px;background:var(--primary);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;transition:background .2s}
+  header .icon.admin-mode{background:var(--admin)}
+  header h1{font-size:1.5rem;font-weight:700;color:var(--text);line-height:1.2}
+  header p{font-size:.85rem;color:var(--muted);margin-top:2px}
+  .admin-banner{display:none;align-items:center;gap:8px;background:var(--admin-light);border:1.5px solid var(--admin);border-radius:var(--radius);padding:10px 16px;margin-bottom:14px;font-size:.875rem;font-weight:600;color:var(--admin-dark);flex-wrap:wrap}
+  .admin-banner.visible{display:flex}
+  .admin-banner .admin-badge{background:var(--admin);color:#fff;border-radius:5px;padding:2px 8px;font-size:.75rem;font-weight:700;letter-spacing:.05em}
+  .admin-banner .logout-btn{margin-left:auto;background:none;border:1.5px solid var(--admin);color:var(--admin-dark);border-radius:6px;padding:4px 12px;font-size:.8rem;font-weight:600;cursor:pointer}
+  .admin-banner .logout-btn:hover{background:var(--admin);color:#fff}
+  .btn-manage{background:var(--admin);color:#fff;border:none;border-radius:6px;padding:5px 13px;font-size:.8rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+  .btn-manage:hover{background:var(--admin-dark)}
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;background:var(--surface);padding:12px 16px;border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border)}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:7px;font-size:.875rem;font-weight:600;cursor:pointer;transition:background .15s,transform .1s}
+  .btn:active{transform:scale(.97)}
+  .btn-nav{background:var(--bg);color:var(--text);border:1px solid var(--border)}
+  .btn-nav:hover{background:var(--primary-light);border-color:var(--primary)}
+  .btn-today{background:var(--primary-light);color:var(--primary-dark);border:1px solid var(--primary)}
+  .btn-today:hover{background:var(--primary);color:#fff}
+  .btn-export{background:#f0fdf4;color:#15803d;border:1px solid #86efac}
+  .btn-export:hover{background:#dcfce7}
+  .btn-admin{background:var(--admin-light);color:var(--admin-dark);border:1px solid var(--admin);margin-left:auto}
+  .btn-admin:hover,.btn-admin.active{background:var(--admin);color:#fff}
+  .week-label{font-weight:700;font-size:1rem;color:var(--text);min-width:200px;text-align:center}
+  .table-wrap{overflow-x:auto;border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border);background:var(--surface)}
+  table{border-collapse:collapse;width:100%;min-width:680px}
+  th{background:#f1f5ff;padding:10px 8px;font-size:.82rem;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap}
+  th.today-col{background:var(--primary-light);color:var(--primary-dark)}
+  td{border:1px solid var(--border);padding:0;vertical-align:top}
+  td.machine-label{padding:8px 10px;font-weight:700;font-size:.88rem;border-right:2px solid var(--border);white-space:nowrap;vertical-align:middle;text-align:left;min-width:100px}
+  .machine-color-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;border:1px solid rgba(0,0,0,.15);vertical-align:middle}
+  .slot-cell{min-width:110px;height:72px;padding:6px 8px;position:relative;transition:background .15s}
+  .slot-cell.free{background:#fff;cursor:pointer}
+  .slot-cell.free:hover{background:#f0f7ff}
+  .slot-cell.booked{cursor:pointer}
+  .slot-cell.booked:hover{filter:brightness(.94)}
+  .slot-cell.disabled{background:var(--disabled-bg);border-left:3px solid var(--disabled-border)!important;cursor:default}
+  .slot-cell.today-col.free{background:#f0f7ff}
+  .slot-cell.today-col.disabled{background:#e8edf4}
+  .slot-time{font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.03em;margin-bottom:2px}
+  .slot-free-label{font-size:.78rem;color:var(--free-text);font-weight:600}
+  .slot-name{font-size:.82rem;font-weight:700;color:#1e3a8a;line-height:1.2}
+  .slot-sub{font-size:.71rem;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px}
+  .slot-disabled-label{font-size:.76rem;color:var(--disabled-border);font-weight:600;margin-top:2px}
+  .slot-admin-actions{display:none;position:absolute;top:3px;right:3px;gap:3px;flex-wrap:wrap;max-width:54px;justify-content:flex-end}
+  .is-admin .slot-admin-actions{display:flex}
+  .admin-slot-btn{width:22px;height:22px;border-radius:5px;border:none;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:opacity .15s,transform .1s;opacity:.85;font-weight:700}
+  .admin-slot-btn:hover{opacity:1;transform:scale(1.1)}
+  .admin-slot-btn.del{background:#fecaca;color:var(--danger)}
+  .admin-slot-btn.lock{background:#fde68a;color:#92400e}
+  .admin-slot-btn.lock-am{background:#fed7aa;color:#9a3412}
+  .admin-slot-btn.lock-pm{background:#fce7f3;color:#9d174d}
+  .admin-slot-btn.unlock{background:#d1fae5;color:#065f46}
+  .overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100;align-items:center;justify-content:center}
+  .overlay.open{display:flex}
+  .modal{background:var(--surface);border-radius:14px;padding:28px 28px 22px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.18);position:relative;animation:pop .18s ease;max-height:90vh;overflow-y:auto}
+  .modal.fullscreen{max-width:none;max-height:none;height:100%;border-radius:0;padding:20px;}
+  .modal.fullscreen .table-wrap{max-height:calc(100vh - 140px);overflow:auto}
+  .carousel-header-full{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+  .carousel-header-full h2{margin:0;font-size:1.3rem;color:var(--text)}
+  .carousel-header-full .carousel-subtitle{margin:4px 0 0;color:var(--muted)}
+  .modal.fullscreen .btn-close{margin-top:0}
+  @keyframes pop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
+  .modal h2{font-size:1.1rem;font-weight:700;margin-bottom:4px;color:var(--text)}
+  .modal .meta{font-size:.82rem;color:var(--muted);margin-bottom:18px}
+  .form-row{display:flex;gap:10px;margin-bottom:12px}
+  .form-group{flex:1;display:flex;flex-direction:column;gap:4px}
+  .form-group label{font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .form-group label .req{color:var(--danger);margin-left:2px}
+  .form-group input[type=text],.form-group input[type=password]{padding:9px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:.9rem;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s;font-family:inherit;width:100%}
+  .form-group input:focus{border-color:var(--primary);background:#fff}
+  .form-group input.err{border-color:var(--danger)!important}
+  .field-err{font-size:.75rem;color:var(--danger);display:none;margin-top:1px}
+  .field-err.show{display:block}
+  .pin-hint{font-size:.75rem;color:var(--muted);margin-top:2px}
+  .modal-actions{display:flex;gap:8px;margin-top:18px;justify-content:flex-end;flex-wrap:wrap}
+  .btn-close{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:9px 18px}
+  .btn-close:hover{background:var(--danger-light);color:var(--danger)}
+  .btn-ok{background:var(--primary);color:#fff;border:none;padding:9px 20px}
+  .btn-ok:hover{background:var(--primary-dark)}
+  .btn-del{background:var(--danger-light);color:var(--danger);border:1px solid #fca5a5;padding:9px 18px;margin-right:auto}
+  .btn-del:hover{background:var(--danger);color:#fff}
+  .btn-admin-ok{background:var(--admin);color:#fff;border:none;padding:9px 20px}
+  .btn-admin-ok:hover{background:var(--admin-dark)}
+  .booking-info{background:#f8faff;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:16px}
+  .booking-info .row{display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0;border-bottom:1px solid #f0f3fa}
+  .booking-info .row:last-child{border-bottom:none}
+  .booking-info .row span:first-child{color:var(--muted);font-weight:600;min-width:80px}
+  .booking-info .row span:last-child{color:var(--text);font-weight:500}
+  .pin-error{font-size:.82rem;color:var(--danger);margin-top:6px;display:none}
+  .machine-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+  .machine-item{display:flex;align-items:center;gap:8px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:8px 10px}
+  .machine-item input.mname{flex:1;border:1.5px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.88rem;color:var(--text);background:#fff;outline:none;font-family:inherit}
+  .machine-item input.mname:focus{border-color:var(--admin)}
+  .machine-item input[type=color]{width:38px;height:32px;border:1.5px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:#fff;flex-shrink:0}
+  .color-label{font-size:.72rem;color:var(--muted);font-weight:600;white-space:nowrap}
+  .icon-btn{width:30px;height:30px;border-radius:6px;border:none;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .icon-btn.remove{background:var(--danger-light);color:var(--danger)}
+  .icon-btn.remove:hover{background:var(--danger);color:#fff}
+  .btn-add{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1.5px dashed var(--admin);border-radius:7px;background:transparent;color:var(--admin);font-size:.85rem;font-weight:600;cursor:pointer;width:100%;justify-content:center;transition:background .15s}
+  .btn-add:hover{background:var(--admin-light)}
+  .legend{display:flex;gap:16px;align-items:center;font-size:.8rem;color:var(--muted);margin-top:14px;flex-wrap:wrap}
+  .legend-item{display:flex;align-items:center;gap:6px}
+  .legend-dot{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.1)}
+  .loading-bar{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;font-size:.9rem;color:var(--muted)}
+  .spinner{width:20px;height:20px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:10px 18px;border-radius:8px;font-size:.85rem;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+  .toast.show{opacity:1}
+  @media(max-width:600px){.week-label{min-width:unset;font-size:.9rem}.btn{padding:7px 11px;font-size:.82rem}.logo-bar img{max-height:50px}}
+  .operateur-select-wrap{position:relative;margin-bottom:4px}
+  .operateur-select-wrap select{width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:.9rem;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s;font-family:inherit;appearance:none;cursor:pointer}
+  .operateur-select-wrap select:focus{border-color:var(--primary);background:#fff}
+  .operateur-select-wrap select.err{border-color:var(--danger)!important}
+  .operateur-select-wrap::after{content:"▾";position:absolute;right:11px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);font-size:.85rem}
+  #foperateur-custom{display:none;margin-top:6px}
+  #foperateur-custom.show{display:block}
+  .op-item{display:flex;align-items:center;gap:8px;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:8px 10px}
+  .op-item input.opname{flex:1;border:1.5px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.88rem;color:var(--text);background:#fff;outline:none;font-family:inherit}
+  .op-item input.opname:focus{border-color:var(--admin)}
+</style>
+</head>
+<body>
+
+<div class="logo-bar">
+  <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAyAAAAIACAIAAADCXFPiAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH6AYZDCsZFmfaWwAAACR0RVh0Q29tbWVudABDcmVhdGVkIHdpdGggR0lNUCBvbiBhIE1hY9bVKBAAAAlXSURBVHja7cExAQAAAMKg9U9tCy+gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBuAABExnBGwAAAABJRU5ErkJggg==" alt="Logo BM GMP">
+</div>
+
+<header>
+  <div class="icon" id="headerIcon">🏭</div>
+  <div>
+    <h1>Réservation des machines</h1>
+    <p>Planification hebdomadaire des créneaux</p>
+  </div>
+</header>
+
+<div class="admin-banner" id="adminBanner">
+  <span class="admin-badge">⚙ ADMIN</span>
+  <span>Mode administrateur actif.</span>
+  <button class="btn-manage" onclick="openMachineManager()">✏️ Gérer les machines</button>
+  <button class="btn-manage" onclick="openOperateurManager()">👥 Gérer les opérateurs</button>
+  <button class="logout-btn" onclick="logoutAdmin()">Se déconnecter</button>
+</div>
+
+<div class="toolbar">
+  <button class="btn btn-nav" onclick="changeWeek(-7)">◀ Préc.</button>
+  <button class="btn btn-today" onclick="goToday()">Aujourd'hui</button>
+  <span class="week-label" id="weekLabel"></span>
+  <button class="btn btn-nav" onclick="changeWeek(7)">Suiv. ▶</button>
+  <button class="btn btn-export" onclick="exportCSV()">↓ Exporter CSV</button>
+  <button class="btn btn-nav" onclick="startMachineCarousel()">👁 Voir plannings</button>
+  <button class="btn btn-admin" id="adminBtn" onclick="toggleAdmin()">⚙ Admin</button>
+</div>
+
+<div class="table-wrap"><div id="grid"><div class="loading-bar"><div class="spinner"></div> Chargement des données…</div></div></div>
+
+<div class="legend">
+  <span class="legend-item"><span class="legend-dot" style="background:#fff;border-color:#e2e6f0"></span>Libre</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#bfdbfe;border-color:#3b82f6"></span>Réservé (couleur machine)</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#f0f7ff;border-color:#e2e6f0"></span>Aujourd'hui</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#f1f5f9;border-color:#94a3b8"></span>Bloqué</span>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeOnBg(event)">
+  <div class="modal" id="modal"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── SUPABASE CONFIG ───────────────────────────────────────────────────────────
+const SUPABASE_URL  = 'https://ggmlfbxppgeivfvlxxrj.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdnbWxmYnhwcGdlaXZmdmx4eHJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNDY5NTIsImV4cCI6MjA5NzkyMjk1Mn0.HvPE2ewB8gFgVzj-xAb1YBxFfn8hTEwOwQLDfF1vgT0';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ─── CONSTANTES ────────────────────────────────────────────────────────────────
+const SLOTS   = ["08h-10h","10h-12h","12h-14h","14h-16h","16h-18h"];
+const SLOT_AM = ["08h-10h","10h-12h"];
+const SLOT_PM = ["12h-14h","14h-16h","16h-18h"];
+const ADMIN_PW = "admin1234";
+const DEFAULT_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316"];
+
+// ─── ÉTAT LOCAL (cache) ────────────────────────────────────────────────────────
+let machines      = [];
+let machineColors = {};
+let operateurs    = [];
+let bookings      = {};   // clé: "machine|date|slot"
+let disabled      = {};   // clé: "machine|date|slot"
+let isAdmin       = false;
+let currentMon    = getMonday(new Date());
+let carouselTimer = null;
+let carouselIndex = 0;
+
+// ─── TOAST ─────────────────────────────────────────────────────────────────────
+function showToast(msg, duration=2500){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ─── DATE ──────────────────────────────────────────────────────────────────────
+function getMonday(d){ d=new Date(d); var day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); d.setHours(0,0,0,0); return d; }
+function fmt(d){ return d.toISOString().split("T")[0]; }
+function isToday(d){ var t=new Date(); return d.getFullYear()===t.getFullYear()&&d.getMonth()===t.getMonth()&&d.getDate()===t.getDate(); }
+function getWorkWeek(){ var days=[]; for(var i=0;i<5;i++){ var d=new Date(currentMon); d.setDate(d.getDate()+i); days.push(d); } return days; }
+
+// ─── NAV ───────────────────────────────────────────────────────────────────────
+function changeWeek(n){ currentMon.setDate(currentMon.getDate()+n); render(); }
+function goToday(){ currentMon=getMonday(new Date()); render(); }
+
+// ─── SUPABASE : CHARGEMENT ─────────────────────────────────────────────────────
+async function loadAll(){
+  await Promise.all([loadMachines(), loadOperateurs(), loadBookings(), loadDisabled()]);
+  render();
+}
+
+async function loadMachines(){
+  const {data,error} = await sb.from('machines').select('*').order('position');
+  if(error){ console.error(error); return; }
+  if(!data || data.length===0){
+    // Données par défaut
+    machines = ["Machine A","Machine B","Machine C"];
+    machineColors = {};
+    machines.forEach((m,i)=>{ machineColors[m]=DEFAULT_COLORS[i]; });
+    for(let i=0;i<machines.length;i++){
+      await sb.from('machines').insert({name:machines[i],color:machineColors[machines[i]],position:i});
+    }
+  } else {
+    machines = data.map(r=>r.name);
+    machineColors = {};
+    data.forEach(r=>{ machineColors[r.name]=r.color; });
+  }
+}
+
+async function loadOperateurs(){
+  const {data,error} = await sb.from('operateurs').select('*').order('name');
+  if(error){ console.error(error); return; }
+  if(!data || data.length===0){
+    operateurs = ["Ligne 1","Ligne 2","Ligne 3","Maintenance","R&D"];
+    for(const op of operateurs){
+      await sb.from('operateurs').insert({name:op});
+    }
+  } else {
+    operateurs = data.map(r=>r.name);
+  }
+}
+
+async function loadBookings(){
+  const week = getWorkWeek();
+  const dates = week.map(d=>fmt(d));
+  const {data,error} = await sb.from('bookings').select('*').in('date',dates);
+  if(error){ console.error(error); return; }
+  bookings = {};
+  if(data) data.forEach(r=>{ bookings[r.machine+'|'+r.date+'|'+r.slot]=r; });
+}
+
+async function loadDisabled(){
+  const week = getWorkWeek();
+  const dates = week.map(d=>fmt(d));
+  const {data,error} = await sb.from('disabled_slots').select('*').in('date',dates);
+  if(error){ console.error(error); return; }
+  disabled = {};
+  if(data) data.forEach(r=>{ disabled[r.machine+'|'+r.date+'|'+r.slot]=true; });
+}
+
+// ─── SUPABASE : ÉCRITURE ───────────────────────────────────────────────────────
+async function dbAddBooking(machine,date,slot,data){
+  const {error} = await sb.from('bookings').insert({machine,date,slot,...data});
+  if(error){ showToast('❌ Erreur lors de la réservation : '+error.message); return false; }
+  return true;
+}
+
+async function dbDeleteBooking(machine,date,slot){
+  const {error} = await sb.from('bookings').delete().match({machine,date,slot});
+  if(error){ showToast('❌ Erreur suppression : '+error.message); return false; }
+  return true;
+}
+
+async function dbUpdateBooking(machine,date,slot,data){
+  const {error} = await sb.from('bookings').update(data).match({machine,date,slot});
+  if(error){ showToast('❌ Erreur mise à jour : '+error.message); return false; }
+  return true;
+}
+
+async function dbAddDisabled(machine,date,slot){
+  const {error} = await sb.from('disabled_slots').insert({machine,date,slot});
+  if(error && error.code!=='23505'){ showToast('❌ Erreur blocage : '+error.message); return false; }
+  return true;
+}
+
+async function dbDeleteDisabled(machine,date,slot){
+  const {error} = await sb.from('disabled_slots').delete().match({machine,date,slot});
+  if(error){ showToast('❌ Erreur déblocage : '+error.message); return false; }
+  return true;
+}
+
+async function dbSaveMachines(arr,colors){
+  await sb.from('machines').delete().neq('name','__never__');
+  for(let i=0;i<arr.length;i++){
+    await sb.from('machines').insert({name:arr[i],color:colors[arr[i]],position:i});
+  }
+}
+
+async function dbSaveOperateurs(arr){
+  await sb.from('operateurs').delete().neq('name','__never__');
+  for(const op of arr){
+    await sb.from('operateurs').insert({name:op});
+  }
+}
+
+// ─── MODAL ─────────────────────────────────────────────────────────────────────
+function openModal(html,fullscreen){
+  var modal=document.getElementById("modal");
+  modal.innerHTML=html;
+  modal.classList.toggle("fullscreen",!!fullscreen);
+  document.getElementById("overlay").classList.add("open");
+  var f=document.querySelector("#modal input");
+  if(f) setTimeout(()=>f.focus(),80);
+}
+function closeModal(){ document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); stopCarousel(); }
+function stopCarousel(){ if(carouselTimer){ clearInterval(carouselTimer); carouselTimer=null; } }
+function startMachineCarousel(){ stopCarousel(); if(!machines.length){ alert("Aucune machine."); return; } carouselIndex=0; openFullScreenCarouselPage(); carouselTimer=setInterval(nextCarouselPage,5000); }
+function nextCarouselPage(){ carouselIndex=(carouselIndex+1)%machines.length; openFullScreenCarouselPage(); }
+function openFullScreenCarouselPage(){ openModal(buildFullscreenMachineAgenda(machines[carouselIndex]),true); }
+function getTwoWeekDays(){ var days=[]; var d=new Date(currentMon); while(days.length<10){ var day=new Date(d); if(day.getDay()!==0&&day.getDay()!==6) days.push(day); d.setDate(d.getDate()+1); } return days; }
+
+function buildFullscreenMachineAgenda(machine){
+  var days=getTwoWeekDays();
+  var start=days[0],end=days[days.length-1];
+  return "<div class='carousel-header-full'>"+
+    "<div><h2>Planning de "+esc(machine)+"</h2>"+
+    "<div class='carousel-subtitle'>"+start.toLocaleDateString('fr-FR')+" – "+end.toLocaleDateString('fr-FR')+" · page "+(carouselIndex+1)+" / "+machines.length+"</div></div>"+
+    "<button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>"+
+    "<div class='table-wrap'>"+buildMachineAgendaTable(machine,days)+"</div>"+
+    "<div style='font-size:.82rem;color:var(--muted);margin-top:12px'>Affichage en lecture seule – page automatique toutes les 5 secondes.</div>";
+}
+
+function buildMachineAgendaTable(machine,days){
+  var color=getMachineColor(machine);
+  var colorLabel=hexToRgba(color,0.10);
+  var html="<table><thead><tr><th>Machine / Créneau</th>";
+  days.forEach(d=>{ html+="<th>"+d.toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'})+"</th>"; });
+  html+="</tr></thead><tbody>";
+  SLOTS.forEach((slot,idx)=>{
+    html+="<tr>";
+    if(idx===0) html+="<td class='machine-label' rowspan='"+SLOTS.length+"' style='background:"+colorLabel+";border-left:4px solid "+color+"'><span class='machine-color-dot' style='background:"+color+"'></span>"+esc(machine)+"</td>";
+    days.forEach(day=>{
+      var key=machine+"|"+fmt(day)+"|"+slot;
+      var r=bookings[key],bl=disabled[key];
+      var tc=isToday(day)?" today-col":"";
+      var cls,content,inlineStyle="";
+      if(bl){ cls="disabled"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>"; }
+      else if(r){ cls="booked"+tc; inlineStyle=" style='background:"+hexToRgba(color,0.12)+";border-left:3px solid "+color+"!important'"; content="<div class='slot-time'>"+slot+"</div><div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div><div class='slot-sub'>"+(r.operateur?esc(r.operateur)+" · ":"")+esc(r.projet)+"</div>"; }
+      else { cls="free"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>"; }
+      html+="<td><div class='slot-cell "+cls+"'"+inlineStyle+">"+content+"</div></td>";
+    });
+    html+="</tr>";
+  });
+  html+="</tbody></table>";
+  return html;
+}
+
+function closeOnBg(e){ if(e.target===document.getElementById("overlay")) closeModal(); }
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeModal(); });
+
+// ─── UTILITAIRES ───────────────────────────────────────────────────────────────
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function jsesc(s){ return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }
+function getMachineColor(m){ return machineColors[m]||"#3b82f6"; }
+function hexToRgba(hex,alpha){ var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return "rgba("+r+","+g+","+b+","+alpha+")"; }
+
+// ─── ADMIN AUTH ────────────────────────────────────────────────────────────────
+function toggleAdmin(){
+  if(isAdmin){ logoutAdmin(); return; }
+  openModal(
+    "<h2>🔐 Connexion administrateur</h2>"+
+    "<div class='meta'>Entrez le mot de passe pour accéder au mode admin.</div>"+
+    "<div class='form-group' style='margin-bottom:6px'>"+
+      "<label>Mot de passe</label>"+
+      "<input type='password' id='apw' placeholder='••••••••' autocomplete='off'>"+
+      "<span class='pin-error' id='apwErr'>Mot de passe incorrect.</span>"+
+    "</div>"+
+    "<div class='modal-actions'>"+
+      "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
+      "<button class='btn btn-admin-ok' onclick='checkPw()'>Se connecter</button>"+
+    "</div>"
+  );
+  document.getElementById("apw").addEventListener("keydown",e=>{ if(e.key==="Enter") checkPw(); });
+}
+function checkPw(){
+  if(document.getElementById("apw").value===ADMIN_PW){
+    isAdmin=true; closeModal(); applyAdminUI(); render();
+  } else {
+    document.getElementById("apwErr").style.display="block";
+    document.getElementById("apw").classList.add("err");
+  }
+}
+function logoutAdmin(){ isAdmin=false; applyAdminUI(); render(); }
+function applyAdminUI(){
+  document.getElementById("adminBtn").classList.toggle("active",isAdmin);
+  document.getElementById("adminBanner").classList.toggle("visible",isAdmin);
+  document.getElementById("headerIcon").classList.toggle("admin-mode",isAdmin);
+  document.getElementById("grid").classList.toggle("is-admin",isAdmin);
+}
+
+// ─── MACHINE MANAGER ──────────────────────────────────────────────────────────
+function openMachineManager(){
+  var rows=machines.map((m,i)=>{
+    var color=getMachineColor(m);
+    return "<div class='machine-item' id='mrow-"+i+"'>"+
+      "<input type='text' class='mname' id='mname-"+i+"' value='"+esc(m)+"' placeholder='Nom de la machine'>"+
+      "<span class='color-label'>Couleur&nbsp;</span>"+
+      "<input type='color' id='mcolor-"+i+"' value='"+color+"'>"+
+      "<button class='icon-btn remove' onclick='removeMRow("+i+")'>✕</button>"+
+    "</div>";
+  }).join("");
+  openModal(
+    "<h2>✏️ Gérer les machines</h2>"+
+    "<div class='meta'>Renommez, choisissez une couleur ou supprimez des machines.</div>"+
+    "<div class='machine-list' id='mlist'>"+rows+"</div>"+
+    "<button class='btn-add' onclick='addMRow()'>+ Ajouter une machine</button>"+
+    "<div class='modal-actions' style='margin-top:18px'>"+
+      "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
+      "<button class='btn btn-admin-ok' onclick='saveMachines()'>✔ Enregistrer</button>"+
+    "</div>"
+  );
+}
+function addMRow(){ var list=document.getElementById("mlist"); var i=list.children.length; var color=DEFAULT_COLORS[i%DEFAULT_COLORS.length]; var d=document.createElement("div"); d.className="machine-item"; d.id="mrow-"+i; d.innerHTML="<input type='text' class='mname' id='mname-"+i+"' placeholder='Nom de la machine'><span class='color-label'>Couleur&nbsp;</span><input type='color' id='mcolor-"+i+"' value='"+color+"'><button class='icon-btn remove' onclick='removeMRow("+i+")'>✕</button>"; list.appendChild(d); }
+function removeMRow(i){ var r=document.getElementById("mrow-"+i); if(r) r.remove(); }
+async function saveMachines(){
+  var items=document.querySelectorAll("#mlist .machine-item");
+  var arr=[],colors={};
+  items.forEach(item=>{
+    var nameInp=item.querySelector(".mname"),colorInp=item.querySelector("input[type=color]");
+    var v=nameInp?nameInp.value.trim():"";
+    if(v){ arr.push(v); colors[v]=colorInp?colorInp.value:"#3b82f6"; }
+  });
+  if(!arr.length){ alert("Il faut au moins une machine."); return; }
+  showToast("💾 Enregistrement…");
+  await dbSaveMachines(arr,colors);
+  machines=arr; machineColors=colors;
+  closeModal(); render(); showToast("✅ Machines enregistrées");
+}
+
+// ─── OPERATEUR MANAGER ────────────────────────────────────────────────────────
+function openOperateurManager(){
+  var rows=operateurs.map((op,i)=>"<div class='op-item' id='oprow-"+i+"'><input type='text' class='opname' id='opname-"+i+"' value='"+esc(op)+"' placeholder=\"Nom de l'opérateur\"><button class='icon-btn remove' onclick='removeOpRow("+i+")'>✕</button></div>").join("");
+  openModal(
+    "<h2>👥 Gérer les opérateurs</h2>"+
+    "<div class='meta'>Ces opérateurs seront proposés lors des réservations.</div>"+
+    "<div class='machine-list' id='oplist'>"+rows+"</div>"+
+    "<button class='btn-add' onclick='addOpRow()'>+ Ajouter un opérateur</button>"+
+    "<div class='modal-actions' style='margin-top:18px'>"+
+      "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
+      "<button class='btn btn-admin-ok' onclick='saveOperateurs()'>✔ Enregistrer</button>"+
+    "</div>"
+  );
+}
+function addOpRow(){ var list=document.getElementById("oplist"); var i=list.children.length; var d=document.createElement("div"); d.className="op-item"; d.id="oprow-"+i; d.innerHTML="<input type='text' class='opname' id='opname-"+i+"' placeholder=\"Nom de l'opérateur\"><button class='icon-btn remove' onclick='removeOpRow("+i+")'>✕</button>"; list.appendChild(d); }
+function removeOpRow(i){ var r=document.getElementById("oprow-"+i); if(r) r.remove(); }
+async function saveOperateurs(){
+  var inputs=document.querySelectorAll("#oplist .opname");
+  var arr=[];
+  inputs.forEach(inp=>{ var v=inp.value.trim(); if(v) arr.push(v); });
+  showToast("💾 Enregistrement…");
+  await dbSaveOperateurs(arr);
+  operateurs=arr; closeModal(); showToast("✅ Opérateurs enregistrés");
+}
+
+function buildOperateurSelect(){
+  var opts="<option value=''>-- Sélectionnez --</option>";
+  operateurs.forEach(op=>{ opts+="<option value='"+esc(op)+"'>"+esc(op)+"</option>"; });
+  opts+="<option value='__new__'>+ Saisir un nouveau nom...</option>";
+  return opts;
+}
+function onOperateurChange(sel){
+  var custom=document.getElementById("foperateur-custom");
+  if(sel.value==="__new__"){ custom.classList.add("show"); custom.focus(); }
+  else { custom.classList.remove("show"); custom.value=""; }
+  sel.classList.remove("err");
+  document.getElementById("eoperateur").classList.remove("show");
+}
+
+// ─── BLOCAGE DEMI-JOURNÉE ─────────────────────────────────────────────────────
+async function adminLockHalfDay(machine,date,period){
+  var slots=period==="am"?SLOT_AM:SLOT_PM;
+  for(const slot of slots){
+    var key=machine+"|"+date+"|"+slot;
+    if(!bookings[key]){ await dbAddDisabled(machine,date,slot); disabled[key]=true; }
+  }
+  render(); showToast("🔒 Demi-journée bloquée");
+}
+
+// ─── ADMIN ACTIONS ────────────────────────────────────────────────────────────
+async function adminDel(key){
+  var parts=key.split("|");
+  closeModal();
+  await dbDeleteBooking(parts[0],parts[1],parts[2]);
+  delete bookings[key];
+  render(); showToast("🗑 Réservation supprimée");
+}
+async function adminLock(key){
+  var parts=key.split("|");
+  await dbAddDisabled(parts[0],parts[1],parts[2]);
+  disabled[key]=true; render(); showToast("🔒 Créneau bloqué");
+}
+async function adminUnlock(key){
+  var parts=key.split("|");
+  await dbDeleteDisabled(parts[0],parts[1],parts[2]);
+  delete disabled[key]; render(); showToast("🔓 Créneau débloqué");
+}
+
+// ─── RÉSERVATION ──────────────────────────────────────────────────────────────
+function book(machine,date,slot){
+  var key=machine+"|"+date+"|"+slot;
+  if(disabled[key]) return;
+  var dayLabel=new Date(date+"T12:00:00").toLocaleDateString("fr-FR",{weekday:"long",day:"2-digit",month:"long"});
+
+  if(bookings[key]){
+    var r=bookings[key];
+    if(isAdmin){
+      openModal(
+        "<h2>🔐 Vue admin — Créneau réservé</h2>"+
+        "<div class='meta'>"+esc(machine)+" — "+esc(dayLabel)+" — "+esc(slot)+"</div>"+
+        "<div class='booking-info'>"+
+          "<div class='row'><span>Nom</span><span>"+esc(r.nom)+" "+esc(r.prenom)+"</span></div>"+
+          "<div class='row'><span>Opérateur</span><span>"+(r.operateur?esc(r.operateur):"—")+"</span></div>"+
+          "<div class='row'><span>Projet</span><span>"+(r.projet?esc(r.projet):"—")+"</span></div>"+
+        "</div>"+
+        "<div class='modal-actions'>"+
+          "<button class='btn btn-del' onclick='adminDel(\""+jsesc(key)+"\")'>🗑 Supprimer</button>"+
+          "<button class='btn btn-close' onclick='closeModal()'>Fermer</button>"+
+        "</div>"
+      );
+    } else {
+      openModal(
+        "<h2>Créneau réservé</h2>"+
+        "<div class='meta'>"+esc(machine)+" — "+esc(dayLabel)+" — "+esc(slot)+"</div>"+
+        "<div class='booking-info'>"+
+          "<div class='row'><span>Nom</span><span>"+esc(r.nom)+" "+esc(r.prenom)+"</span></div>"+
+          "<div class='row'><span>Opérateur</span><span>"+(r.operateur?esc(r.operateur):"—")+"</span></div>"+
+          "<div class='row'><span>Projet</span><span>"+(r.projet?esc(r.projet):"—")+"</span></div>"+
+        "</div>"+
+        "<div class='form-group' style='margin-bottom:4px'>"+
+          "<label>Code d'annulation</label>"+
+          "<input type='password' id='pinIn' placeholder='Code PIN' maxlength='8' autocomplete='off'>"+
+          "<span class='pin-error' id='pinErr'>Code incorrect.</span>"+
+        "</div>"+
+        "<div class='modal-actions'>"+
+          "<button class='btn btn-ok' onclick='tryEdit(\""+jsesc(key)+"\",\""+jsesc(r.pin)+"\")'>✏️ Modifier</button>"+
+          "<button class='btn btn-del' onclick='tryDel(\""+jsesc(key)+"\",\""+jsesc(r.pin)+"\")'>🗑 Annuler la réservation</button>"+
+          "<button class='btn btn-close' onclick='closeModal()'>Fermer</button>"+
+        "</div>"
+      );
+    }
+    return;
+  }
+
+  openModal(
+    "<h2>Nouvelle réservation</h2>"+
+    "<div class='meta'>"+esc(machine)+" — "+esc(dayLabel)+" — "+esc(slot)+"</div>"+
+    "<div class='form-row'>"+
+      "<div class='form-group'><label>Nom <span class='req'>*</span></label><input type='text' id='fnom' placeholder='Dupont' autocomplete='off'><span class='field-err' id='enom'>Obligatoire</span></div>"+
+      "<div class='form-group'><label>Prénom <span class='req'>*</span></label><input type='text' id='fprenom' placeholder='Marie' autocomplete='off'><span class='field-err' id='eprenom'>Obligatoire</span></div>"+
+    "</div>"+
+    "<div class='form-row'>"+
+      "<div class='form-group'><label>Opérateur <span class='req'>*</span></label>"+
+        "<div class='operateur-select-wrap'><select id='foperateur' onchange='onOperateurChange(this)'>"+buildOperateurSelect()+"</select></div>"+
+        "<input type='text' id='foperateur-custom' placeholder=\"Nom de l'opérateur...\" autocomplete='off'>"+
+        "<span class='field-err' id='eoperateur'>Obligatoire</span></div>"+
+      "<div class='form-group'><label>Projet <span class='req'>*</span></label><input type='text' id='fprojet' placeholder='Maintenance Q3' autocomplete='off'><span class='field-err' id='eprojet'>Obligatoire</span></div>"+
+    "</div>"+
+    "<div class='form-group'>"+
+      "<label>Code PIN d'annulation <span class='req'>*</span></label>"+
+      "<input type='password' id='fpin' placeholder='1234' maxlength='8' autocomplete='off'>"+
+      "<span class='field-err' id='epin'>Obligatoire</span>"+
+      "<span class='pin-hint'>Sera demandé pour annuler votre réservation.</span>"+
+    "</div>"+
+    "<div class='modal-actions'>"+
+      "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
+      "<button class='btn btn-ok' onclick='submitBook(\""+jsesc(machine)+"\",\""+date+"\",\""+slot+"\")'>✔ Confirmer</button>"+
+    "</div>"
+  );
+}
+
+function vf(id,eid){ var v=document.getElementById(id).value.trim(); var ok=!!v; document.getElementById(id).classList.toggle("err",!ok); document.getElementById(eid).classList.toggle("show",!ok); return ok; }
+function getOperateurValue(){ var sel=document.getElementById("foperateur"); if(!sel) return ""; if(sel.value==="__new__"){ var c=document.getElementById("foperateur-custom"); return c?c.value.trim():""; } return sel.value.trim(); }
+function vfOperateur(){ var v=getOperateurValue(); var ok=!!v; document.getElementById("foperateur").classList.toggle("err",!ok); document.getElementById("eoperateur").classList.toggle("show",!ok); return ok; }
+
+async function submitBook(machine,date,slot){
+  var v1=vf("fnom","enom"),v2=vf("fprenom","eprenom"),v3=vfOperateur(),v4=vf("fprojet","eprojet"),v5=vf("fpin","epin");
+  if(!v1||!v2||!v3||!v4||!v5) return;
+  var opVal=getOperateurValue();
+  var payload={
+    nom:document.getElementById("fnom").value.trim(),
+    prenom:document.getElementById("fprenom").value.trim(),
+    operateur:opVal,
+    projet:document.getElementById("fprojet").value.trim(),
+    pin:document.getElementById("fpin").value.trim()
+  };
+  // Ajouter nouvel opérateur si besoin
+  if(document.getElementById("foperateur").value==="__new__" && opVal && !operateurs.includes(opVal)){
+    operateurs.push(opVal);
+    await sb.from('operateurs').insert({name:opVal});
+  }
+  showToast("💾 Enregistrement…");
+  var key=machine+"|"+date+"|"+slot;
+  var ok=await dbAddBooking(machine,date,slot,payload);
+  if(ok){ bookings[key]=payload; closeModal(); render(); showToast("✅ Réservation confirmée"); }
+}
+
+function tryDel(key,storedPin){
+  var entered=document.getElementById("pinIn").value.trim();
+  if(entered!==storedPin){ document.getElementById("pinErr").style.display="block"; document.getElementById("pinIn").classList.add("err"); return; }
+  adminDel(key);
+}
+function tryEdit(key,storedPin){
+  var entered=document.getElementById("pinIn").value.trim();
+  if(entered!==storedPin){ document.getElementById("pinErr").style.display="block"; document.getElementById("pinIn").classList.add("err"); return; }
+  openEditBookingModal(key);
+}
+
+function openEditBookingModal(key){
+  var r=bookings[key]; var parts=key.split("|");
+  openModal(
+    "<h2>Modifier la réservation</h2>"+
+    "<div class='meta'>"+esc(parts[0])+" — "+esc(parts[1])+" — "+esc(parts[2])+"</div>"+
+    "<div class='form-row'>"+
+      "<div class='form-group'><label>Nom <span class='req'>*</span></label><input type='text' id='edit-nom' value='"+esc(r.nom)+"' autocomplete='off'><span class='field-err' id='edit-nom-err'>Obligatoire</span></div>"+
+      "<div class='form-group'><label>Prénom <span class='req'>*</span></label><input type='text' id='edit-prenom' value='"+esc(r.prenom)+"' autocomplete='off'><span class='field-err' id='edit-prenom-err'>Obligatoire</span></div>"+
+    "</div>"+
+    "<div class='form-row'>"+
+      "<div class='form-group'><label>Opérateur <span class='req'>*</span></label>"+
+        "<div class='operateur-select-wrap'><select id='edit-operateur' onchange='onEditOpChange(this)'>"+buildOperateurSelect()+"</select></div>"+
+        "<input type='text' id='edit-operateur-custom' placeholder=\"Nom de l'opérateur...\" autocomplete='off'>"+
+        "<span class='field-err' id='edit-operateur-err'>Obligatoire</span></div>"+
+      "<div class='form-group'><label>Projet <span class='req'>*</span></label><input type='text' id='edit-projet' value='"+esc(r.projet)+"' autocomplete='off'><span class='field-err' id='edit-projet-err'>Obligatoire</span></div>"+
+    "</div>"+
+    "<div class='modal-actions'>"+
+      "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
+      "<button class='btn btn-ok' onclick='submitEditBooking(\""+jsesc(key)+"\")'>Enregistrer</button>"+
+    "</div>"
+  );
+  var sel=document.getElementById("edit-operateur");
+  if(r.operateur && !operateurs.includes(r.operateur)){ sel.value="__new__"; document.getElementById("edit-operateur-custom").classList.add("show"); document.getElementById("edit-operateur-custom").value=r.operateur; }
+  else if(r.operateur){ sel.value=r.operateur; }
+}
+function onEditOpChange(sel){ var c=document.getElementById("edit-operateur-custom"); if(sel.value==="__new__"){ c.classList.add("show"); c.focus(); } else { c.classList.remove("show"); c.value=""; } sel.classList.remove("err"); document.getElementById("edit-operateur-err").classList.remove("show"); }
+function getEditOpValue(){ var sel=document.getElementById("edit-operateur"); if(!sel) return ""; if(sel.value==="__new__"){ var c=document.getElementById("edit-operateur-custom"); return c?c.value.trim():""; } return sel.value.trim(); }
+function vfEditOp(){ var v=getEditOpValue(); var ok=!!v; document.getElementById("edit-operateur").classList.toggle("err",!ok); document.getElementById("edit-operateur-err").classList.toggle("show",!ok); return ok; }
+function vfEdit(id,eid){ var v=document.getElementById(id).value.trim(); var ok=!!v; document.getElementById(id).classList.toggle("err",!ok); document.getElementById(eid).classList.toggle("show",!ok); return ok; }
+
+async function submitEditBooking(key){
+  var v1=vfEdit("edit-nom","edit-nom-err"),v2=vfEdit("edit-prenom","edit-prenom-err"),v3=vfEditOp(),v4=vfEdit("edit-projet","edit-projet-err");
+  if(!v1||!v2||!v3||!v4) return;
+  var opVal=getEditOpValue();
+  if(document.getElementById("edit-operateur").value==="__new__" && opVal && !operateurs.includes(opVal)){ operateurs.push(opVal); await sb.from('operateurs').insert({name:opVal}); }
+  var parts=key.split("|");
+  var data={nom:document.getElementById("edit-nom").value.trim(),prenom:document.getElementById("edit-prenom").value.trim(),operateur:opVal,projet:document.getElementById("edit-projet").value.trim()};
+  showToast("💾 Mise à jour…");
+  var ok=await dbUpdateBooking(parts[0],parts[1],parts[2],data);
+  if(ok){ Object.assign(bookings[key],data); closeModal(); render(); showToast("✅ Réservation modifiée"); }
+}
+
+// ─── CSV ───────────────────────────────────────────────────────────────────────
+function exportCSV(){
+  var keys=Object.keys(bookings);
+  if(!keys.length){ alert("Aucune réservation à exporter."); return; }
+  var csv="Machine;Date;Créneau;Nom;Prénom;Opérateur;Projet\n";
+  keys.forEach(k=>{ var p=k.split("|"),r=bookings[k]; csv+='"'+p[0]+'";"'+p[1]+'";"'+p[2]+'";"'+r.nom+'";"'+r.prenom+'";'+(r.operateur?'"'+r.operateur+'"':'')+';"'+r.projet+'"\n'; });
+  var blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a"); a.href=url; a.download="reservations_"+fmt(new Date())+".csv"; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── RENDU ─────────────────────────────────────────────────────────────────────
+function render(){
+  var grid=document.getElementById("grid");
+  var html="<table><thead><tr><th>Machine / Créneau</th>";
+  var week=getWorkWeek();
+  week.forEach(d=>{
+    var tc=isToday(d)?" today-col":"";
+    html+="<th class='"+tc+"'>"+d.toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"2-digit"})+(isToday(d)?" ●":"")+"</th>";
+  });
+  html+="</tr></thead><tbody>";
+
+  machines.forEach(machine=>{
+    var color=getMachineColor(machine);
+    var colorLight=hexToRgba(color,0.12);
+    var colorLabel=hexToRgba(color,0.10);
+
+    SLOTS.forEach((slot,idx)=>{
+      html+="<tr>";
+      if(idx===0) html+="<td class='machine-label' rowspan='"+SLOTS.length+"' style='background:"+colorLabel+";border-left:4px solid "+color+"'><span class='machine-color-dot' style='background:"+color+"'></span>"+esc(machine)+"</td>";
+      week.forEach(day=>{
+        var key=machine+"|"+fmt(day)+"|"+slot;
+        var r=bookings[key],bl=disabled[key];
+        var tc=isToday(day)?" today-col":"";
+        var cls,content,adm="",inlineStyle="";
+        if(bl){
+          cls="disabled"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>";
+          if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn unlock' title='Débloquer' onclick='event.stopPropagation();adminUnlock(\""+jsesc(key)+"\")'>✔</button></div>";
+        } else if(r){
+          cls="booked"+tc; inlineStyle=" style='background:"+colorLight+";border-left:3px solid "+color+"!important'";
+          content="<div class='slot-time'>"+slot+"</div><div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div><div class='slot-sub'>"+(r.operateur?esc(r.operateur)+" · ":"")+esc(r.projet)+"</div>";
+          if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn del' title='Supprimer' onclick='event.stopPropagation();adminDel(\""+jsesc(key)+"\")'>✕</button></div>";
+        } else {
+          cls="free"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>";
+          if(isAdmin){
+            var isMorning=SLOT_AM.includes(slot);
+            var halfBtn=isMorning
+              ?"<button class='admin-slot-btn lock-am' title='Bloquer tout le matin' onclick='event.stopPropagation();adminLockHalfDay(\""+jsesc(machine)+"\",\""+fmt(day)+"\",\"am\")'>AM</button>"
+              :"<button class='admin-slot-btn lock-pm' title='Bloquer tout l\\'après-midi' onclick='event.stopPropagation();adminLockHalfDay(\""+jsesc(machine)+"\",\""+fmt(day)+"\",\"pm\")'>PM</button>";
+            adm="<div class='slot-admin-actions'>"+halfBtn+"<button class='admin-slot-btn lock' title='Bloquer ce créneau' onclick='event.stopPropagation();adminLock(\""+jsesc(key)+"\")'>🔒</button></div>";
+          }
+        }
+        var click=bl?"":" onclick='book(\""+jsesc(machine)+"\",\""+fmt(day)+"\",\""+slot+"\")'";
+        html+="<td><div class='slot-cell "+cls+"'"+inlineStyle+click+">"+adm+content+"</div></td>";
+      });
+      html+="</tr>";
+    });
+  });
+
+  html+="</tbody></table>";
+  grid.innerHTML=html;
+  if(isAdmin) grid.classList.add("is-admin");
+  else grid.classList.remove("is-admin");
+
+  var end=new Date(currentMon); end.setDate(end.getDate()+4);
+  document.getElementById("weekLabel").textContent=
+    currentMon.toLocaleDateString("fr-FR")+" – "+end.toLocaleDateString("fr-FR");
+}
+
+// ─── DÉMARRAGE ─────────────────────────────────────────────────────────────────
+// Recharger les données à chaque changement de semaine
+const _origChangeWeek = changeWeek;
+async function changeWeek(n){ currentMon.setDate(currentMon.getDate()+n); await loadBookings(); await loadDisabled(); render(); }
+async function goToday(){ currentMon=getMonday(new Date()); await loadBookings(); await loadDisabled(); render(); }
+
+loadAll();
+</script>
+</body>
+</html>
