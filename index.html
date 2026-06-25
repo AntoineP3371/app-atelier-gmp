@@ -51,7 +51,7 @@
   td{border:1px solid var(--border);padding:0;vertical-align:top}
   td.machine-label{padding:8px 10px;font-weight:700;font-size:.88rem;border-right:2px solid var(--border);white-space:nowrap;vertical-align:middle;text-align:left;min-width:100px}
   .machine-color-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;border:1px solid rgba(0,0,0,.15);vertical-align:middle}
-  .slot-cell{min-width:110px;height:72px;padding:6px 8px;position:relative;transition:background .15s}
+  .slot-cell{min-width:130px;height:auto;min-height:80px;padding:6px 8px;position:relative;transition:background .15s}
   .slot-cell.free{background:#fff;cursor:pointer}
   .slot-cell.free:hover{background:#f0f7ff}
   .slot-cell.booked{cursor:pointer}
@@ -59,10 +59,12 @@
   .slot-cell.disabled{background:var(--disabled-bg);border-left:3px solid var(--disabled-border)!important;cursor:default}
   .slot-cell.today-col.free{background:#f0f7ff}
   .slot-cell.today-col.disabled{background:#e8edf4}
-  .slot-time{font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.03em;margin-bottom:2px}
+  .slot-time{font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.03em;margin-bottom:3px}
   .slot-free-label{font-size:.78rem;color:var(--free-text);font-weight:600}
-  .slot-name{font-size:.82rem;font-weight:700;color:#1e3a8a;line-height:1.2}
-  .slot-sub{font-size:.71rem;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px}
+  .slot-name{font-size:.82rem;font-weight:700;color:#1e3a8a;line-height:1.3;word-break:break-word}
+  .slot-sub{font-size:.75rem;color:var(--muted);margin-top:2px;line-height:1.3;word-break:break-word;white-space:normal}
+  .slot-operateur{font-size:.75rem;color:#4b5563;margin-top:2px;font-weight:600;word-break:break-word}
+  .slot-projet{font-size:.73rem;color:var(--muted);margin-top:1px;word-break:break-word;font-style:italic}
   .slot-disabled-label{font-size:.76rem;color:var(--disabled-border);font-weight:600;margin-top:2px}
   .slot-admin-actions{display:none;position:absolute;top:3px;right:3px;gap:3px;flex-wrap:wrap;max-width:54px;justify-content:flex-end}
   .is-admin .slot-admin-actions{display:flex}
@@ -415,7 +417,11 @@ function buildMultiMachineAgendaTable(machineList,days){
         var tc=isToday(day)?" today-col":"";
         var cls,content,inlineStyle="";
         if(bl){ cls="disabled"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>"; }
-        else if(r){ cls="booked"+tc; inlineStyle=" style='background:"+hexToRgba(color,0.12)+";border-left:3px solid "+color+"!important'"; content="<div class='slot-time'>"+slot+"</div><div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div><div class='slot-sub'>"+(r.operateur?esc(r.operateur)+" · ":"")+esc(r.projet)+"</div>"; }
+        else if(r){ cls="booked"+tc; inlineStyle=" style='background:"+hexToRgba(color,0.12)+";border-left:3px solid "+color+"!important'";
+          content="<div class='slot-time'>"+slot+"</div>"+
+            "<div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div>"+
+            (r.operateur?"<div class='slot-operateur'>"+esc(r.operateur)+"</div>":"")+
+            (r.projet?"<div class='slot-projet'>"+esc(r.projet)+"</div>":""); }
         else { cls="free"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>"; }
         html+="<td><div class='slot-cell "+cls+"'"+inlineStyle+">"+content+"</div></td>";
       });
@@ -1030,7 +1036,10 @@ function render(){
           if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn unlock' title='Débloquer' onclick='event.stopPropagation();adminUnlock(\""+jsesc(key)+"\")'>✔</button></div>";
         } else if(r){
           cls="booked"+tc; inlineStyle=" style='background:"+colorLight+";border-left:3px solid "+color+"!important'";
-          content="<div class='slot-time'>"+slot+"</div><div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div><div class='slot-sub'>"+(r.operateur?esc(r.operateur)+" · ":"")+esc(r.projet)+"</div>";
+          content="<div class='slot-time'>"+slot+"</div>"+
+            "<div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div>"+
+            (r.operateur?"<div class='slot-operateur'>"+esc(r.operateur)+"</div>":"")+
+            (r.projet?"<div class='slot-projet'>"+esc(r.projet)+"</div>":"");
           if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn del' title='Supprimer' onclick='event.stopPropagation();adminDel(\""+jsesc(key)+"\")'>✕</button></div>";
         } else {
           cls="free"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>";
