@@ -696,64 +696,96 @@ async function restoreHistory(index){
 }
 
 // ─── EXPORT iCAL ──────────────────────────────────────────────────────────────
-const ICAL_EDGE_URL = SUPABASE_URL + '/functions/v1/ical';
-
 function openIcalExport(){
   var html = "<h2>📅 Abonnements iCal</h2>"+
-    "<div class='meta'>Cliquez sur <strong>S'abonner</strong> pour ouvrir votre application calendrier, ou <strong>Copier l'URL</strong> pour la coller manuellement dans Google Calendar → « Autres agendas » → « Via une URL ».</div>";
+    "<div class='meta'>Copiez le lien correspondant et abonnez-vous dans votre calendrier (Google Calendar, Apple Calendar, Outlook…) pour être informé en temps réel.</div>";
 
   // Par machine
-  html += "<div class='ical-section'><h3>🏭 Par machine</h3>";
+  html += "<div class='ical-section'><h3>Par machine</h3>";
   machines.forEach(function(m){
-    var httpsUrl = ICAL_EDGE_URL + '?type=machine&value=' + encodeURIComponent(m);
-    var webcalUrl = httpsUrl.replace(/^https?:\/\//, 'webcal://');
+    var url = buildIcalUrl('machine', m);
     html += "<div class='ical-item'>"+
       "<span class='ical-item-label'>"+esc(m)+"</span>"+
-      "<div style='display:flex;gap:6px'>"+
-        "<a href='"+webcalUrl+"' class='ical-copy-btn' style='text-decoration:none'>📆 S'abonner</a>"+
-        "<button class='ical-copy-btn' onclick='copyToClipboard(\""+jsesc(httpsUrl)+"\")'>📋 Copier l'URL</button>"+
-      "</div>"+
+      "<button class='ical-copy-btn' onclick='copyIcal(\""+jsesc(url)+"\")'>📋 Copier le lien</button>"+
     "</div>";
   });
   html += "</div>";
 
   // Par opérateur
-  html += "<div class='ical-section'><h3>👤 Par opérateur</h3>";
+  html += "<div class='ical-section'><h3>Par opérateur</h3>";
   operateurs.forEach(function(op){
-    var httpsUrl = ICAL_EDGE_URL + '?type=operateur&value=' + encodeURIComponent(op);
-    var webcalUrl = httpsUrl.replace(/^https?:\/\//, 'webcal://');
+    var url = buildIcalUrl('operateur', op);
     html += "<div class='ical-item'>"+
       "<span class='ical-item-label'>"+esc(op)+"</span>"+
-      "<div style='display:flex;gap:6px'>"+
-        "<a href='"+webcalUrl+"' class='ical-copy-btn' style='text-decoration:none'>📆 S'abonner</a>"+
-        "<button class='ical-copy-btn' onclick='copyToClipboard(\""+jsesc(httpsUrl)+"\")'>📋 Copier l'URL</button>"+
-      "</div>"+
+      "<button class='ical-copy-btn' onclick='copyIcal(\""+jsesc(url)+"\")'>📋 Copier le lien</button>"+
     "</div>";
   });
   html += "</div>";
 
-  html += "<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;font-size:.78rem;color:#15803d;margin-bottom:12px'>"+
-    "💡 <strong>Google Calendar :</strong> Autres agendas → + → Via une URL → coller l'URL https://<br>"+
-    "💡 <strong>Apple Calendar :</strong> Fichier → Nouvel abonnement → coller l'URL webcal://<br>"+
-    "💡 <strong>Outlook :</strong> Ajouter un calendrier → S'abonner via le web → coller l'URL https://"+
-  "</div>"+
-  "<div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>";
+  html += "<div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>";
   openModal(html);
 }
 
-function copyToClipboard(text){
-  navigator.clipboard.writeText(text).then(function(){
-    showToast("📋 URL copiée !");
-  }).catch(function(){
-    // Fallback
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast("📋 URL copiée !");
-  });
+function buildIcalUrl(type, value){
+  // Génère un lien ical "webcal://" pointant vers une route qui sert le calendrier
+  // Comme l'app est un fichier HTML local, on génère un lien data: avec le contenu iCal
+  return window.location.href.split('?')[0] + '?ical='+encodeURIComponent(type)+'/'+encodeURIComponent(value);
+}
+
+function copyIcal(url){
+  // Générer le contenu iCal et le télécharger
+  var urlObj = new URL(url, window.location.href);
+  var icalParam = urlObj.searchParams.get('ical');
+  if(!icalParam){ navigator.clipboard.writeText(url).then(function(){ showToast("📋 Lien copié !"); }); return; }
+  var parts = icalParam.split('/');
+  var type = decodeURIComponent(parts[0]);
+  var value = decodeURIComponent(parts.slice(1).join('/'));
+  var ical = generateIcal(type, value);
+  var blob = new Blob([ical], {type:'text/calendar;charset=utf-8'});
+  var burl = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = burl;
+  a.download = 'planning_'+value.replace(/\s+/g,'_')+'.ics';
+  a.click();
+  URL.revokeObjectURL(burl);
+  showToast("📥 Fichier .ics téléchargé pour "+value);
+}
+
+function generateIcal(type, value){
+  var lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//BM GMP//Reservations//FR',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:Planning '+value,
+    'X-WR-TIMEZONE:Europe/Paris'
+  ];
+  // Filtrer les réservations selon le type
+  for(var key in bookings){
+    var r = bookings[key];
+    var p = key.split('|');
+    var machine = p[0], date = p[1], slot = p[2];
+    if(type === 'machine' && machine !== value) continue;
+    if(type === 'operateur' && r.operateur !== value) continue;
+    // Calculer les horaires
+    var isAM = slot === '08h-12h';
+    var startHour = isAM ? '080000' : '140000';
+    var endHour = isAM ? '120000' : '180000';
+    var dateStr = date.replace(/-/g,'');
+    var uid = 'bmgmp-'+key.replace(/[\|\s]/g,'-')+'@bmgmp';
+    var summary = machine + ' — ' + (r.nom||'') + ' ' + (r.prenom||'');
+    if(r.projet) summary += ' (' + r.projet + ')';
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:'+uid);
+    lines.push('DTSTART;TZID=Europe/Paris:'+dateStr+'T'+startHour);
+    lines.push('DTEND;TZID=Europe/Paris:'+dateStr+'T'+endHour);
+    lines.push('SUMMARY:'+summary.replace(/[,;\\]/g,'\\$&').replace(/\n/g,'\\n'));
+    lines.push('DESCRIPTION:Machine: '+machine+'\\nOpérateur: '+(r.operateur||'—')+'\\nProjet: '+(r.projet||'—'));
+    lines.push('END:VEVENT');
+  }
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
 }
 
 // ─── OPERATEUR MANAGER ────────────────────────────────────────────────────────
