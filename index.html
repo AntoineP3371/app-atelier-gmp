@@ -300,6 +300,7 @@ let currentMon    = getMonday(new Date());
 let carouselTimer = null;
 let carouselIndex = 0;
 let selectedDayIdx = (function(){ var d=new Date().getDay()-1; return(d>=0&&d<=4)?d:0; })();
+let openModalName  = null;
 // Nouvelles variables
 let carouselPages = null;  // null = auto (3 machines/page), sinon tableau de tableaux de machines
 let history48h    = [];    // historique des 48 dernières heures
@@ -325,9 +326,12 @@ async function goToday(){ currentMon=getMonday(new Date()); await loadBookings()
 // ─── SUPABASE : CHARGEMENT ─────────────────────────────────────────────────────
 async function loadAll(){
   await Promise.all([loadMachines(), loadOperateurs(), loadBookings(), loadDisabled()]);
+  applyAdminUI();
   render();
   startNotificationChecker();
-  setInterval(()=>{ location.reload(); }, 10000);
+  var pm=sessionStorage.getItem('pendingModal');
+  if(pm){ sessionStorage.removeItem('pendingModal'); ({machines:openMachineManager,operateurs:openOperateurManager,carousel:openCarouselConfig,history:openHistory,ical:openIcalExport})[pm]?.(); }
+  setInterval(()=>{ sessionStorage.setItem('pendingModal', openModalName||''); location.reload(); }, 10000);
 }
 
 async function loadMachines(){
@@ -437,7 +441,7 @@ function openModal(html,fullscreen){
   var f=document.querySelector("#modal input");
   if(f) setTimeout(()=>f.focus(),80);
 }
-function closeModal(){ document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); stopCarousel(); }
+function closeModal(){ document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); stopCarousel(); openModalName=null; sessionStorage.removeItem('pendingModal'); }
 function stopCarousel(){ if(carouselTimer){ clearInterval(carouselTimer); carouselTimer=null; } }
 function startMachineCarousel(){ stopCarousel(); if(!machines.length){ alert("Aucune machine."); return; } carouselIndex=0; openFullScreenCarouselPage(); carouselTimer=setInterval(nextCarouselPage,5000); }
 function getCarouselPages(){
@@ -538,7 +542,7 @@ function applyAdminUI(){
 }
 
 // ─── MACHINE MANAGER avec drag & drop ────────────────────────────────────────
-function openMachineManager(){
+function openMachineManager(){ openModalName='machines';
   var rows=machines.map((m,i)=>{
     var color=getMachineColor(m);
     return "<div class='machine-item' id='mrow-"+i+"' draggable='true' ondragstart='dragStart(event,"+i+")' ondragover='dragOver(event)' ondrop='dragDrop(event,"+i+")' ondragleave='dragLeave(event)'>"+
@@ -598,7 +602,7 @@ async function saveMachines(){
 }
 
 // ─── CAROUSEL PAGES CONFIG ────────────────────────────────────────────────────
-function openCarouselConfig(){
+function openCarouselConfig(){ openModalName='carousel';
   var pages = carouselPages && carouselPages.length>0 ? carouselPages : getCarouselPages();
   var html = "<h2>📺 Configuration du carrousel</h2>"+
     "<div class='meta'>Définissez quelles machines s'affichent sur chaque page du carrousel. Chaque page peut contenir une ou plusieurs machines.</div>"+
@@ -709,7 +713,7 @@ function loadHistory48h(){
   }catch(e){}
 }
 
-function openHistory(){
+function openHistory(){ openModalName='history';
   if(history48h.length === 0){
     openModal("<h2>🕐 Historique (48h)</h2><div class='meta'>Aucune modification enregistrée dans les 48 dernières heures.</div><div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>");
     return;
@@ -767,10 +771,15 @@ async function restoreHistory(index){
 const ICAL_EDGE_URL = SUPABASE_URL + '/functions/v1/ical';
 var icalUrls = []; // stockage temporaire des URLs pour éviter les problèmes d'échappement
 
-function openIcalExport(){
+function openIcalExport(){ openModalName='ical';
   icalUrls = [];
   var html = "<h2>📅 Abonnements iCal</h2>"+
-    "<div class='meta'>Cliquez sur <strong>Copier l'URL</strong> puis collez-la dans votre application calendrier.</div>";
+    "<div class='meta'>Cliquez sur <strong>Copier l'URL</strong> puis collez-la dans votre application calendrier.</div>"+
+    "<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;font-size:.78rem;color:#15803d;margin-bottom:16px'>"+
+      "💡 <strong>Google Calendar :</strong> Autres agendas → + → Via une URL → coller l'URL<br>"+
+      "💡 <strong>Apple Calendar :</strong> Fichier → Nouvel abonnement de calendrier → coller l'URL<br>"+
+      "💡 <strong>Outlook :</strong> Ajouter un calendrier → S'abonner via le web → coller l'URL"+
+    "</div>";
 
   // Par machine
   html += "<div class='ical-section'><h3>🏭 Par machine</h3>";
@@ -796,12 +805,7 @@ function openIcalExport(){
   });
   html += "</div>";
 
-  html += "<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;font-size:.78rem;color:#15803d;margin-bottom:12px'>"+
-    "💡 <strong>Google Calendar :</strong> Autres agendas → + → Via une URL → coller l'URL<br>"+
-    "💡 <strong>Apple Calendar :</strong> Fichier → Nouvel abonnement de calendrier → coller l'URL<br>"+
-    "💡 <strong>Outlook :</strong> Ajouter un calendrier → S'abonner via le web → coller l'URL"+
-  "</div>"+
-  "<div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>";
+  html += "<div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>";
   openModal(html);
 }
 
@@ -845,7 +849,7 @@ function opRowHtml(i, name, phone, apikey){
     "</div>"+
   "</div>";
 }
-function openOperateurManager(){
+function openOperateurManager(){ openModalName='operateurs';
   var rows=operateurs.map((op,i)=>{ var info=operateursPhone[op]||{}; return opRowHtml(i,op,info.phone||'',info.apikey||''); }).join("");
   openModal(
     "<h2>👥 Gérer les opérateurs</h2>"+
