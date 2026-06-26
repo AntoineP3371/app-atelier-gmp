@@ -295,7 +295,7 @@ let operateurs    = [];
 let operateursPhone = {}; // { nom: { phone, apikey } }
 let bookings      = {};   // clé: "machine|date|slot"
 let disabled      = {};   // clé: "machine|date|slot"
-let isAdmin       = false;
+let isAdmin       = sessionStorage.getItem('isAdmin')==='1';
 let currentMon    = getMonday(new Date());
 let carouselTimer = null;
 let carouselIndex = 0;
@@ -523,13 +523,13 @@ function toggleAdmin(){
 }
 function checkPw(){
   if(document.getElementById("apw").value===ADMIN_PW){
-    isAdmin=true; closeModal(); applyAdminUI(); render();
+    isAdmin=true; sessionStorage.setItem('isAdmin','1'); closeModal(); applyAdminUI(); render();
   } else {
     document.getElementById("apwErr").style.display="block";
     document.getElementById("apw").classList.add("err");
   }
 }
-function logoutAdmin(){ isAdmin=false; applyAdminUI(); render(); }
+function logoutAdmin(){ isAdmin=false; sessionStorage.removeItem('isAdmin'); applyAdminUI(); render(); }
 function applyAdminUI(){
   document.getElementById("adminBtn").classList.toggle("active",isAdmin);
   document.getElementById("adminBanner").classList.toggle("visible",isAdmin);
