@@ -328,10 +328,18 @@ async function loadAll(){
   await Promise.all([loadMachines(), loadOperateurs(), loadBookings(), loadDisabled()]);
   applyAdminUI();
   render();
-  startNotificationChecker();
+  // startNotificationChecker() désactivé : géré par la Supabase Edge Function notify-upcoming-slots
   var pm=sessionStorage.getItem('pendingModal');
-  if(pm){ sessionStorage.removeItem('pendingModal'); ({machines:openMachineManager,operateurs:openOperateurManager,carousel:openCarouselConfig,history:openHistory,ical:openIcalExport})[pm]?.(); }
-  setInterval(()=>{ sessionStorage.setItem('pendingModal', openModalName||''); location.reload(); }, 10000);
+  if(pm){ sessionStorage.removeItem('pendingModal'); ({machines:openMachineManager,operateurs:openOperateurManager,carousel:openCarouselConfig,history:openHistory,ical:openIcalExport,carouselview:startMachineCarousel})[pm]?.(); }
+  setInterval(async()=>{
+    if(openModalName==='carouselview'){
+      await Promise.all([loadBookings(),loadDisabled()]);
+      openFullScreenCarouselPage();
+    } else {
+      sessionStorage.setItem('pendingModal',openModalName||'');
+      location.reload();
+    }
+  }, 10000);
 }
 
 async function loadMachines(){
@@ -443,7 +451,7 @@ function openModal(html,fullscreen){
 }
 function closeModal(){ document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); stopCarousel(); openModalName=null; sessionStorage.removeItem('pendingModal'); }
 function stopCarousel(){ if(carouselTimer){ clearInterval(carouselTimer); carouselTimer=null; } }
-function startMachineCarousel(){ stopCarousel(); if(!machines.length){ alert("Aucune machine."); return; } carouselIndex=0; openFullScreenCarouselPage(); carouselTimer=setInterval(nextCarouselPage,5000); }
+function startMachineCarousel(){ stopCarousel(); if(!machines.length){ alert("Aucune machine."); return; } openModalName='carouselview'; carouselIndex=0; openFullScreenCarouselPage(); carouselTimer=setInterval(nextCarouselPage,5000); }
 function getCarouselPages(){
   if(carouselPages && carouselPages.length>0) return carouselPages;
   var pages=[]; for(var i=0;i<machines.length;i+=3){ pages.push(machines.slice(i,i+3)); } return pages;
@@ -837,15 +845,31 @@ function fallbackCopy(text){
 }
 
 // ─── OPERATEUR MANAGER ────────────────────────────────────────────────────────
+async function testWhatsapp(i){
+  var phone  = document.getElementById("opphone-"+i)?.value.trim();
+  var apikey = document.getElementById("opapikey-"+i)?.value.trim();
+  var name   = document.getElementById("opname-"+i)?.value.trim() || "l'opérateur";
+  if(!phone || !apikey){ showToast("⚠️ Numéro et clé API requis"); return; }
+  showToast("📤 Envoi du message test…");
+  var msg = "✅ Test OK — Les notifications WhatsApp sont bien configurées pour "+name+".";
+  var url = "https://api.callmebot.com/whatsapp.php?phone="+encodeURIComponent(phone)+"&text="+encodeURIComponent(msg)+"&apikey="+encodeURIComponent(apikey);
+  try {
+    await fetch(url, {mode:'no-cors'});
+    showToast("✅ Message test envoyé à "+phone);
+  } catch(e) {
+    showToast("❌ Erreur lors de l'envoi");
+  }
+}
 function opRowHtml(i, name, phone, apikey){
   return "<div class='op-item' id='oprow-"+i+"' style='flex-direction:column;align-items:stretch;gap:6px'>"+
     "<div style='display:flex;align-items:center;gap:8px'>"+
       "<input type='text' class='opname' id='opname-"+i+"' value='"+esc(name)+"' placeholder=\"Nom de l'opérateur\">"+
       "<button class='icon-btn remove' onclick='removeOpRow("+i+")'>✕</button>"+
     "</div>"+
-    "<div style='display:flex;gap:8px'>"+
+    "<div style='display:flex;gap:8px;align-items:center'>"+
       "<input type='tel' class='opphone' id='opphone-"+i+"' value='"+esc(phone)+"' placeholder='📱 +336… (WhatsApp)' style='flex:1;border:1.5px solid var(--border);border-radius:6px;padding:5px 9px;font-size:.82rem;color:var(--text);background:#fff;outline:none;font-family:inherit'>"+
       "<input type='text' class='opapikey' id='opapikey-"+i+"' value='"+esc(apikey)+"' placeholder='Clé API CallMeBot' style='flex:1;border:1.5px solid var(--border);border-radius:6px;padding:5px 9px;font-size:.82rem;color:var(--text);background:#fff;outline:none;font-family:inherit'>"+
+      "<button onclick='testWhatsapp("+i+")' title='Envoyer un message test' style='flex-shrink:0;background:#25D366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap'>▶ Test</button>"+
     "</div>"+
   "</div>";
 }
