@@ -131,7 +131,39 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   .toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:10px 18px;border-radius:8px;font-size:.85rem;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
   .toast.show{opacity:1}
-  @media(max-width:600px){.week-label{min-width:unset;font-size:.9rem}.btn{padding:7px 11px;font-size:.82rem}.logo-bar img{max-height:50px}}
+  /* ── Wrapper centré bureau ── */
+  .page-wrap{width:100%;max-width:1200px;margin:0 auto}
+  /* ── Onglets jour (mobile uniquement) ── */
+  .day-tabs{display:none;gap:4px;margin-bottom:14px;background:var(--surface);border-radius:var(--radius);padding:6px;box-shadow:var(--shadow);border:1px solid var(--border)}
+  .day-tab{flex:1;padding:9px 4px;border:none;border-radius:6px;background:transparent;color:var(--muted);font-size:.72rem;font-weight:700;cursor:pointer;text-align:center;transition:background .15s;white-space:nowrap;line-height:1.3}
+  .day-tab.is-today{color:var(--primary-dark)}
+  .day-tab.active{background:var(--primary);color:#fff}
+  .day-tab.is-today.active{background:var(--primary-dark)}
+  /* ── Mobile ≤ 640px ── */
+  @media(max-width:640px){
+    body{padding:10px 8px}
+    .logo-bar img{max-height:46px}
+    header h1{font-size:1.1rem}
+    header p{display:none}
+    .day-tabs{display:flex}
+    .toolbar{padding:8px 10px;gap:6px}
+    .week-label{min-width:unset;font-size:.85rem;order:-1;width:100%;text-align:center}
+    .btn{padding:10px 12px;font-size:.82rem}
+    .btn-admin{margin-left:0}
+    .btn-manage{font-size:.75rem;padding:5px 9px}
+    .admin-banner{gap:6px}
+    table{min-width:unset;width:100%}
+    td.machine-label{min-width:70px;font-size:.8rem;padding:6px 8px}
+    .slot-cell{min-width:unset;min-height:90px;padding:8px 10px}
+    .slot-name{font-size:.88rem}
+    .slot-time{font-size:.75rem}
+    .day-col{display:none}
+    .day-col.day-selected{display:table-cell}
+    .modal{max-width:calc(100vw - 20px);padding:20px 14px 16px}
+    .form-row{flex-direction:column;gap:8px}
+    .legend{flex-wrap:nowrap;overflow-x:auto;gap:12px;padding-bottom:4px}
+    .toast{bottom:14px;right:12px;left:12px;text-align:center}
+  }
   .operateur-select-wrap{position:relative;margin-bottom:4px}
   .operateur-select-wrap select{width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:.9rem;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s;font-family:inherit;appearance:none;cursor:pointer}
   .operateur-select-wrap select:focus{border-color:var(--primary);background:#fff}
@@ -206,6 +238,7 @@
   <button class="btn btn-admin" id="adminBtn" onclick="toggleAdmin()">⚙ Admin</button>
 </div>
 
+<div class="day-tabs" id="dayTabs"></div>
 <div class="table-wrap"><div id="grid"><div class="loading-bar"><div class="spinner"></div> Chargement des données…</div></div></div>
 
 <div class="legend">
@@ -245,6 +278,7 @@ let isAdmin       = false;
 let currentMon    = getMonday(new Date());
 let carouselTimer = null;
 let carouselIndex = 0;
+let selectedDayIdx = (function(){ var d=new Date().getDay()-1; return(d>=0&&d<=4)?d:0; })();
 // Nouvelles variables
 let carouselPages = null;  // null = auto (3 machines/page), sinon tableau de tableaux de machines
 let history48h    = [];    // historique des 48 dernières heures
@@ -1044,9 +1078,9 @@ function render(){
   var grid=document.getElementById("grid");
   var html="<table><thead><tr><th>Machine / Créneau</th>";
   var week=getWorkWeek();
-  week.forEach(d=>{
+  week.forEach((d,di)=>{
     var tc=isToday(d)?" today-col":"";
-    html+="<th class='"+tc+"'>"+d.toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"2-digit"})+(isToday(d)?" ●":"")+"</th>";
+    html+="<th class='day-col"+tc+"' data-col='"+di+"'>"+d.toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"2-digit"})+(isToday(d)?" ●":"")+"</th>";
   });
   html+="</tr></thead><tbody>";
 
@@ -1058,7 +1092,7 @@ function render(){
     SLOTS.forEach((slot,idx)=>{
       html+="<tr>";
       if(idx===0) html+="<td class='machine-label' rowspan='"+SLOTS.length+"' style='background:"+colorLabel+";border-left:4px solid "+color+"'><span class='machine-color-dot' style='background:"+color+"'></span>"+esc(machine)+"</td>";
-      week.forEach(day=>{
+      week.forEach((day,di)=>{
         var key=machine+"|"+fmt(day)+"|"+slot;
         var r=bookings[key],bl=disabled[key];
         var tc=isToday(day)?" today-col":"";
@@ -1080,7 +1114,7 @@ function render(){
           }
         }
         var click=bl?"":" onclick='book(\""+jsesc(machine)+"\",\""+fmt(day)+"\",\""+slot+"\")'";
-        html+="<td><div class='slot-cell "+cls+"'"+inlineStyle+click+">"+adm+content+"</div></td>";
+        html+="<td class='day-col' data-col='"+di+"'><div class='slot-cell "+cls+"'"+inlineStyle+click+">"+adm+content+"</div></td>";
       });
       html+="</tr>";
     });
@@ -1090,10 +1124,33 @@ function render(){
   grid.innerHTML=html;
   if(isAdmin) grid.classList.add("is-admin");
   else grid.classList.remove("is-admin");
+  buildDayTabs();
+  applySelectedDay();
 
   var end=new Date(currentMon); end.setDate(end.getDate()+4);
   document.getElementById("weekLabel").textContent=
     currentMon.toLocaleDateString("fr-FR")+" – "+end.toLocaleDateString("fr-FR");
+}
+
+// ─── ONGLETS JOUR (mobile) ────────────────────────────────────────────────────
+function buildDayTabs(){
+  var tabs=document.getElementById("dayTabs"); if(!tabs) return;
+  var week=getWorkWeek();
+  tabs.innerHTML=week.map((d,i)=>{
+    var cls="day-tab"+(isToday(d)?" is-today":"")+(i===selectedDayIdx?" active":"");
+    var label=d.toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"2-digit"});
+    return "<button class='"+cls+"' onclick='switchDay("+i+")'>"+label+"</button>";
+  }).join("");
+}
+function applySelectedDay(){
+  document.querySelectorAll(".day-col").forEach(el=>{
+    el.classList.toggle("day-selected", parseInt(el.dataset.col)===selectedDayIdx);
+  });
+}
+function switchDay(i){
+  selectedDayIdx=i;
+  applySelectedDay();
+  buildDayTabs();
 }
 
 // ─── NOTIFICATIONS WHATSAPP (CallMeBot) ───────────────────────────────────────
