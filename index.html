@@ -365,7 +365,7 @@ async function loadAll(){
       sessionStorage.setItem('pendingModal',openModalName||'');
       location.reload();
     }
-  }, 10000);
+  }, 60000);
 }
 
 async function loadMachines(){
@@ -504,7 +504,7 @@ function buildFullscreenMachineAgenda(){
       "</div>"+
     "</div>"+
     "<div class='table-wrap'>"+buildMultiMachineAgendaTable(page,days)+"</div>"+
-    "<div style='font-size:.78rem;color:var(--muted);margin-top:10px;text-align:right'>Lecture seule · actualisation automatique toutes les 5 secondes</div>";
+    "<div style='font-size:.78rem;color:var(--muted);margin-top:10px;text-align:right'>Lecture seule · actualisation automatique toutes les minutes</div>";
   return html;
 }
 
