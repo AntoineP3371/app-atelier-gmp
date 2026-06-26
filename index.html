@@ -332,9 +332,12 @@ async function loadAll(){
   var pm=sessionStorage.getItem('pendingModal');
   if(pm){ sessionStorage.removeItem('pendingModal'); ({machines:openMachineManager,operateurs:openOperateurManager,carousel:openCarouselConfig,history:openHistory,ical:openIcalExport,carouselview:startMachineCarousel})[pm]?.(); }
   setInterval(async()=>{
+    var modalOpen=document.getElementById('overlay').classList.contains('open');
     if(openModalName==='carouselview'){
       await Promise.all([loadBookings(),loadDisabled()]);
       openFullScreenCarouselPage();
+    } else if(modalOpen){
+      await Promise.all([loadBookings(),loadDisabled()]);
     } else {
       sessionStorage.setItem('pendingModal',openModalName||'');
       location.reload();
