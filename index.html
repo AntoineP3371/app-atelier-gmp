@@ -360,18 +360,34 @@ async function loadAll(){
   // startNotificationChecker() désactivé : géré par la Supabase Edge Function notify-upcoming-slots
   var pm=sessionStorage.getItem('pendingModal');
   if(pm){ sessionStorage.removeItem('pendingModal'); ({machines:openMachineManager,operateurs:openOperateurManager,carousel:openCarouselConfig,history:openHistory,ical:openIcalExport,carouselview:startMachineCarousel})[pm]?.(); }
-  setInterval(async()=>{
-    var modalOpen=document.getElementById('overlay').classList.contains('open');
-    if(openModalName==='carouselview'){
-      await Promise.all([loadBookings(),loadDisabled()]);
-      openFullScreenCarouselPage();
-    } else if(modalOpen){
-      await Promise.all([loadBookings(),loadDisabled()]);
-    } else {
-      sessionStorage.setItem('pendingModal',openModalName||'');
-      location.reload();
-    }
-  }, 60000);
+  setupRealtime();
+  // Filet de sécurité : si un événement Realtime est manqué, on resynchronise
+  // en place toutes les 60 s (sans recharger la page).
+  setInterval(realtimeRefresh, 60000);
+}
+
+// ─── TEMPS RÉEL ─────────────────────────────────────────────────────────────────
+// Rafraîchit le planning EN PLACE (sans recharger la page, sans perdre le
+// défilement) dès qu'une réservation ou un créneau désactivé change.
+async function realtimeRefresh(){
+  await Promise.all([loadBookings(),loadDisabled()]);
+  if(openModalName==='carouselview'){ openFullScreenCarouselPage(); return; }
+  var wrap=document.getElementById('mainWrap');
+  var st=wrap?wrap.scrollTop:0, sl=wrap?wrap.scrollLeft:0;
+  render();
+  var w2=document.getElementById('mainWrap');
+  if(w2){ w2.scrollTop=st; w2.scrollLeft=sl; }
+}
+
+// Regroupe les événements rapprochés en un seul rafraîchissement (anti-rebond).
+var _rtTimer=null;
+function scheduleRefresh(){ clearTimeout(_rtTimer); _rtTimer=setTimeout(realtimeRefresh,300); }
+
+function setupRealtime(){
+  sb.channel('planning-rt')
+    .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},scheduleRefresh)
+    .on('postgres_changes',{event:'*',schema:'public',table:'disabled_slots'},scheduleRefresh)
+    .subscribe();
 }
 
 async function loadMachines(){
