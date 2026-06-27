@@ -122,7 +122,7 @@
   .form-group{flex:1;display:flex;flex-direction:column;gap:4px}
   .form-group label{font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .form-group label .req{color:var(--danger);margin-left:2px}
-  .form-group input[type=text],.form-group input[type=password]{padding:9px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:.9rem;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s;font-family:inherit;width:100%}
+  .form-group input[type=text],.form-group input[type=password],.form-group input[type=date]{padding:9px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:.9rem;color:var(--text);background:var(--bg);outline:none;transition:border-color .15s;font-family:inherit;width:100%}
   .form-group input:focus{border-color:var(--primary);background:#fff}
   .form-group input.err{border-color:var(--danger)!important}
   .field-err{font-size:.75rem;color:var(--danger);display:none;margin-top:1px}
@@ -1322,16 +1322,60 @@ async function moveBooking(srcKey,destKey){
 }
 
 // ─── CSV ───────────────────────────────────────────────────────────────────────
+// Ouvre le choix de période avant l'export
 function exportCSV(){
   if(!isAdmin){ showToast("⛔ Export réservé à l'administrateur"); return; }
-  var keys=Object.keys(bookings);
-  if(!keys.length){ alert("Aucune réservation à exporter."); return; }
+  var now=new Date();
+  var startDef=fmt(new Date(now.getFullYear(), now.getMonth(), 1)); // 1er du mois en cours
+  var endDef=fmt(now);
+  openModalName='csvexport';
+  openModal(
+    "<h2>↓ Exporter en CSV</h2>"+
+    "<div class='meta'>Choisissez la période des réservations à inclure.</div>"+
+    "<div class='form-row'>"+
+      "<div class='form-group'><label>Du</label><input type='date' id='csvStart' value='"+startDef+"'></div>"+
+      "<div class='form-group'><label>Au</label><input type='date' id='csvEnd' value='"+endDef+"'></div>"+
+    "</div>"+
+    "<div style='display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 10px'>"+
+      "<button type='button' class='history-restore-btn' onclick='csvPreset(0)'>Ce mois-ci</button>"+
+      "<button type='button' class='history-restore-btn' onclick='csvPreset(-1)'>Mois dernier</button>"+
+      "<button type='button' class='history-restore-btn' onclick='csvPreset(\"year\")'>Année "+now.getFullYear()+"</button>"+
+    "</div>"+
+    "<div class='modal-actions'>"+
+      "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
+      "<button class='btn btn-ok' onclick='doCsvExport()'>↓ Télécharger</button>"+
+    "</div>"
+  );
+}
+// Raccourcis de période : 0 = mois courant, -1 = mois précédent, "year" = année en cours
+function csvPreset(which){
+  var now=new Date(), s, e;
+  if(which==='year'){ s=new Date(now.getFullYear(),0,1); e=new Date(now.getFullYear(),11,31); }
+  else { var m=now.getMonth()+(which||0); s=new Date(now.getFullYear(), m, 1); e=new Date(now.getFullYear(), m+1, 0); }
+  document.getElementById('csvStart').value=fmt(s);
+  document.getElementById('csvEnd').value=fmt(e);
+}
+// Interroge Supabase sur la plage choisie puis télécharge le CSV
+async function doCsvExport(){
+  if(!isAdmin){ showToast("⛔ Export réservé à l'administrateur"); return; }
+  var start=document.getElementById('csvStart').value;
+  var end=document.getElementById('csvEnd').value;
+  if(!start||!end){ showToast("Veuillez choisir les deux dates"); return; }
+  if(start>end){ var t=start; start=end; end=t; }
+  showToast("⏳ Préparation du CSV…");
+  const {data,error}=await sb.from('bookings').select('*')
+    .gte('date',start).lte('date',end)
+    .order('date',{ascending:true}).order('slot',{ascending:true}).order('machine',{ascending:true});
+  if(error){ showToast("❌ Erreur : "+(error.message||JSON.stringify(error))); return; }
+  if(!data || !data.length){ alert("Aucune réservation entre le "+start+" et le "+end+"."); return; }
   var csv="Machine;Date;Créneau;Nom;Prénom;Opérateur;Projet\n";
-  keys.forEach(k=>{ var p=k.split("|"),r=bookings[k]; csv+='"'+p[0]+'";"'+p[1]+'";"'+p[2]+'";"'+r.nom+'";"'+r.prenom+'";'+(r.operateur?'"'+r.operateur+'"':'')+';"'+r.projet+'"\n'; });
+  data.forEach(function(r){ csv+='"'+r.machine+'";"'+r.date+'";"'+r.slot+'";"'+(r.nom||'')+'";"'+(r.prenom||'')+'";'+(r.operateur?'"'+r.operateur+'"':'')+';"'+(r.projet||'')+'"\n'; });
   var blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
   var url=URL.createObjectURL(blob);
-  var a=document.createElement("a"); a.href=url; a.download="reservations_"+fmt(new Date())+".csv"; a.click();
+  var a=document.createElement("a"); a.href=url; a.download="reservations_"+start+"_au_"+end+".csv"; a.click();
   URL.revokeObjectURL(url);
+  closeModal();
+  showToast("✅ CSV téléchargé ("+data.length+" réservation(s))");
 }
 
 // ─── RENDU ─────────────────────────────────────────────────────────────────────
