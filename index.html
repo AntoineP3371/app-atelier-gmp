@@ -1045,21 +1045,21 @@ function book(machine,date,slot){
     "<h2>Nouvelle réservation</h2>"+
     "<div class='meta'>"+esc(machine)+" — "+esc(dayLabel)+" — "+esc(slot)+"</div>"+
     "<div class='form-row'>"+
-      "<div class='form-group'><label>Nom <span class='req'>*</span></label><input type='text' id='fnom' placeholder='Dupont' autocomplete='off'><span class='field-err' id='enom'>Obligatoire</span></div>"+
-      "<div class='form-group'><label>Prénom <span class='req'>*</span></label><input type='text' id='fprenom' placeholder='Marie' autocomplete='off'><span class='field-err' id='eprenom'>Obligatoire</span></div>"+
+      "<div class='form-group'><label>Nom <span class='req'>*</span></label><input type='text' id='fnom' placeholder=\"Nom de l'étudiant\" autocomplete='off'><span class='field-err' id='enom'>Obligatoire</span></div>"+
+      "<div class='form-group'><label>Prénom <span class='req'>*</span></label><input type='text' id='fprenom' placeholder=\"Prénom de l'étudiant\" autocomplete='off'><span class='field-err' id='eprenom'>Obligatoire</span></div>"+
     "</div>"+
     "<div class='form-row'>"+
       "<div class='form-group'><label>Opérateur <span class='req'>*</span></label>"+
         "<div class='operateur-select-wrap'><select id='foperateur' onchange='onOperateurChange(this)'>"+buildOperateurSelect()+"</select></div>"+
         "<input type='text' id='foperateur-custom' placeholder=\"Nom de l'opérateur...\" autocomplete='off'>"+
         "<span class='field-err' id='eoperateur'>Obligatoire</span></div>"+
-      "<div class='form-group'><label>Projet <span class='req'>*</span></label><input type='text' id='fprojet' placeholder='Maintenance Q3' autocomplete='off'><span class='field-err' id='eprojet'>Obligatoire</span></div>"+
+      "<div class='form-group'><label>Projet <span class='req'>*</span></label><input type='text' id='fprojet' placeholder='Nom du projet' autocomplete='off'><span class='field-err' id='eprojet'>Obligatoire</span></div>"+
     "</div>"+
     "<div class='form-group'>"+
-      "<label>Code PIN d'annulation <span class='req'>*</span></label>"+
-      "<input type='password' id='fpin' placeholder='1234' maxlength='8' autocomplete='off'>"+
+      "<label>Code PIN d'annulation et de modification <span class='req'>*</span></label>"+
+      "<input type='password' id='fpin' placeholder='Code individuel' maxlength='8' autocomplete='off'>"+
       "<span class='field-err' id='epin'>Obligatoire</span>"+
-      "<span class='pin-hint'>Sera demandé pour annuler votre réservation.</span>"+
+      "<span class='pin-hint'>Sera demandé pour modifier ou annuler votre réservation.</span>"+
     "</div>"+
     "<div class='modal-actions'>"+
       "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
