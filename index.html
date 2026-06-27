@@ -1124,6 +1124,24 @@ function book(machine,date,slot){
       "<button class='btn btn-ok' onclick='submitBook(\""+jsesc(machine)+"\",\""+date+"\",\""+slot+"\")'>✔ Confirmer</button>"+
     "</div>"
   );
+  prefillLastBooking();
+}
+
+// Mémorisation locale de la dernière saisie (hors code PIN, personnel)
+function saveLastBooking(p){
+  try{ localStorage.setItem('lastBooking', JSON.stringify({nom:p.nom||'',prenom:p.prenom||'',operateur:p.operateur||'',projet:p.projet||''})); }catch(e){}
+}
+function prefillLastBooking(){
+  var last; try{ last=JSON.parse(localStorage.getItem('lastBooking')||'null'); }catch(e){ last=null; }
+  if(!last) return;
+  var n=document.getElementById('fnom'); if(n&&last.nom) n.value=last.nom;
+  var pr=document.getElementById('fprenom'); if(pr&&last.prenom) pr.value=last.prenom;
+  var pj=document.getElementById('fprojet'); if(pj&&last.projet) pj.value=last.projet;
+  var sel=document.getElementById('foperateur');
+  if(sel&&last.operateur){
+    if(operateurs.includes(last.operateur)){ sel.value=last.operateur; }
+    else { sel.value='__new__'; var c=document.getElementById('foperateur-custom'); if(c){ c.classList.add('show'); c.value=last.operateur; } }
+  }
 }
 
 function vf(id,eid){ var v=document.getElementById(id).value.trim(); var ok=!!v; document.getElementById(id).classList.toggle("err",!ok); document.getElementById(eid).classList.toggle("show",!ok); return ok; }
@@ -1151,7 +1169,7 @@ async function submitBook(machine,date,slot){
   var key=machine+"|"+date+"|"+slot;
   var _before=snapState();
   var ok=await dbAddBooking(machine,date,slot,payload);
-  if(ok){ bookings[key]=payload; addHistoryEntry("Nouvelle réservation", machine+' | '+date+' | '+slot+' — '+payload.nom+' '+payload.prenom+(payload.projet?' ('+payload.projet+')':''), _before.b, _before.d); closeModal(); render(); showToast("✅ Réservation confirmée"); }
+  if(ok){ bookings[key]=payload; saveLastBooking(payload); addHistoryEntry("Nouvelle réservation", machine+' | '+date+' | '+slot+' — '+payload.nom+' '+payload.prenom+(payload.projet?' ('+payload.projet+')':''), _before.b, _before.d); closeModal(); render(); showToast("✅ Réservation confirmée"); }
 }
 
 function tryDel(key,storedPin){
