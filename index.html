@@ -232,6 +232,9 @@
   .history-entry .hist-details{color:var(--muted);font-size:.76rem;margin-top:2px}
   .history-restore-btn{background:var(--admin-light);color:var(--admin-dark);border:1px solid var(--admin);border-radius:5px;padding:3px 9px;font-size:.75rem;font-weight:600;cursor:pointer;margin-top:6px}
   .history-restore-btn:hover{background:var(--admin);color:#fff}
+  .btn-undo{background:#fff;color:var(--admin-dark);border:1px solid var(--admin);border-radius:6px;padding:4px 12px;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .15s}
+  .btn-undo:hover:not(:disabled){background:var(--admin);color:#fff}
+  .btn-undo:disabled{opacity:.4;cursor:not-allowed}
   /* iCal export */
   .ical-section{margin-bottom:16px}
   .ical-section h3{font-size:.88rem;font-weight:700;color:var(--text);margin-bottom:8px}
@@ -262,6 +265,8 @@
   <div class="admin-banner-top">
     <span class="admin-badge">⚙ ADMIN</span>
     <span class="admin-banner-label">Mode administrateur actif</span>
+    <button class="btn-undo" id="undoBtn" onclick="undo()" title="Annuler la dernière action" disabled>↶ Annuler</button>
+    <button class="btn-undo" id="redoBtn" onclick="redo()" title="Rétablir l'action annulée" disabled>↷ Rétablir</button>
     <button class="logout-btn" onclick="logoutAdmin()">↩ Déconnecter</button>
   </div>
   <div class="admin-tools">
@@ -606,6 +611,7 @@ function applyAdminUI(){
   document.getElementById("headerIcon").classList.toggle("admin-mode",isAdmin);
   document.getElementById("grid").classList.toggle("is-admin",isAdmin);
   document.getElementById("exportBtn").style.display = isAdmin ? "" : "none";
+  updateUndoRedoUI();
 }
 
 // ─── MACHINE MANAGER avec drag & drop ────────────────────────────────────────
@@ -755,6 +761,9 @@ function loadCarouselConfig(){
 }
 
 // ─── HISTORIQUE 48H ───────────────────────────────────────────────────────────
+var redoLog = [];   // actions annulées, ré-applicables (réinitialisé à chaque nouvelle action)
+
+// Le snapshot stocké représente l'état AVANT l'action (pour pouvoir l'annuler).
 function addHistoryEntry(action, details, snapshotBookings, snapshotDisabled){
   var entry = {
     time: new Date().toISOString(),
@@ -767,7 +776,53 @@ function addHistoryEntry(action, details, snapshotBookings, snapshotDisabled){
   // Garder seulement les entrées des 48 dernières heures
   var cutoff = Date.now() - 48*60*60*1000;
   history48h = history48h.filter(function(e){ return new Date(e.time).getTime() > cutoff; });
-  try{ localStorage.setItem('history48h', JSON.stringify(history48h)); }catch(e){}
+  redoLog = [];                       // une nouvelle action invalide la pile de rétablissement
+  persistHistory();
+  updateUndoRedoUI();
+}
+function persistHistory(){ try{ localStorage.setItem('history48h', JSON.stringify(history48h)); }catch(e){} }
+
+function snapState(){ return { b: JSON.parse(JSON.stringify(bookings)), d: JSON.parse(JSON.stringify(disabled)) }; }
+
+// Reconstruit l'état de la base (fenêtre visible) à partir d'un instantané.
+async function applyState(snapB, snapD){
+  snapB=snapB||{}; snapD=snapD||{};
+  var dates = getTwoWeekDays().map(function(d){ return fmt(d); });
+  for(var k in bookings){ var p=k.split("|"); if(dates.indexOf(p[1])>=0){ await sb.from('bookings').delete().match({machine:p[0],date:p[1],slot:p[2]}); } }
+  for(var k2 in disabled){ var p2=k2.split("|"); if(dates.indexOf(p2[1])>=0){ await sb.from('disabled_slots').delete().match({machine:p2[0],date:p2[1],slot:p2[2]}); } }
+  for(var k3 in snapB){ var p3=k3.split("|"); if(dates.indexOf(p3[1])<0) continue; var r=snapB[k3];
+    await sb.from('bookings').insert({machine:p3[0],date:p3[1],slot:p3[2],nom:r.nom||'',prenom:r.prenom||'',operateur:r.operateur||'',projet:r.projet||'',pin:r.pin||''}); }
+  for(var k4 in snapD){ var p4=k4.split("|"); if(dates.indexOf(p4[1])>=0){ await sb.from('disabled_slots').insert({machine:p4[0],date:p4[1],slot:p4[2]}); } }
+  await loadBookings(); await loadDisabled(); render();
+}
+
+function updateUndoRedoUI(){
+  var u=document.getElementById('undoBtn'), r=document.getElementById('redoBtn');
+  if(u) u.disabled = history48h.length===0;
+  if(r) r.disabled = redoLog.length===0;
+}
+
+// Annuler la dernière action (état AVANT cette action).
+async function undo(){
+  if(history48h.length===0){ showToast("Rien à annuler"); return; }
+  var entry = history48h.shift();
+  var after = snapState();                 // état actuel = APRÈS l'action
+  showToast("⏳ Annulation…");
+  await applyState(entry.bookings, entry.disabled);
+  redoLog.unshift({ action:entry.action, details:entry.details, after:after, entry:entry });
+  persistHistory(); updateUndoRedoUI();
+  showToast("↶ Annulé : "+entry.action);
+}
+
+// Rétablir la dernière action annulée.
+async function redo(){
+  if(redoLog.length===0){ showToast("Rien à rétablir"); return; }
+  var item = redoLog.shift();
+  showToast("⏳ Rétablissement…");
+  await applyState(item.after.b, item.after.d);
+  history48h.unshift(item.entry);          // l'action redevient annulable
+  persistHistory(); updateUndoRedoUI();
+  showToast("↷ Rétabli : "+item.action);
 }
 
 function loadHistory48h(){
@@ -786,52 +841,33 @@ function openHistory(){ openModalName='history';
     return;
   }
   var html = "<h2>🕐 Historique des modifications (48h)</h2>"+
-    "<div class='meta'>Les "+history48h.length+" dernière(s) modification(s). Cliquez sur « Restaurer » pour revenir à un état antérieur.</div>"+
+    "<div class='meta'>"+history48h.length+" action(s). « Annuler cette action » revient à l'état juste avant l'action choisie (cela annule aussi les actions plus récentes).</div>"+
     "<div style='max-height:60vh;overflow-y:auto;margin-top:12px'>";
   history48h.forEach(function(entry, i){
     var t = new Date(entry.time);
     var timeStr = t.toLocaleDateString('fr-FR') + ' à ' + t.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
     html += "<div class='history-entry'>"+
-      "<div class='hist-time'>"+esc(timeStr)+"</div>"+
+      "<div class='hist-time'>"+esc(timeStr)+(i===0?" · la plus récente":"")+"</div>"+
       "<div class='hist-action'>"+esc(entry.action)+"</div>"+
       (entry.details ? "<div class='hist-details'>"+esc(entry.details)+"</div>" : "")+
-      "<button class='history-restore-btn' onclick='restoreHistory("+i+")'>↩ Restaurer cet état</button>"+
+      "<button class='history-restore-btn' onclick='restoreHistory("+i+")'>↶ Annuler cette action</button>"+
     "</div>";
   });
   html += "</div><div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>";
   openModal(html);
 }
 
+// Annule l'action à l'index donné ET toutes les actions plus récentes
+// (revient à l'état juste avant l'action choisie). Réversible via « Rétablir ».
 async function restoreHistory(index){
-  if(!confirm("Restaurer le planning à cet état ? Les réservations et blocages actuels seront remplacés.")) return;
   var entry = history48h[index];
-  showToast("⏳ Restauration en cours…");
+  if(!entry) return;
+  var n = index + 1;
+  var label = n===1 ? "cette action" : ("les "+n+" actions les plus récentes");
+  if(!confirm("Annuler "+label+" ?\nLe planning reviendra à l'état d'avant « "+entry.action+" ».")) return;
   closeModal();
-  var week = getTwoWeekDays();
-  var dates = week.map(function(d){ return fmt(d); });
-  // Supprimer réservations et blocages actuels de la semaine
-  for(var k in bookings){ var p=k.split("|"); if(dates.includes(p[1])){ await sb.from('bookings').delete().match({machine:p[0],date:p[1],slot:p[2]}); } }
-  for(var k2 in disabled){ var p2=k2.split("|"); if(dates.includes(p2[1])){ await sb.from('disabled_slots').delete().match({machine:p2[0],date:p2[1],slot:p2[2]}); } }
-  // Réinsérer depuis snapshot (uniquement les champs métier, sans id/created_at)
-  var snap = entry.bookings;
-  for(var k3 in snap){
-    var p3=k3.split("|");
-    if(!dates.includes(p3[1])) continue;
-    var r = snap[k3];
-    await sb.from('bookings').insert({
-      machine: p3[0], date: p3[1], slot: p3[2],
-      nom: r.nom||'', prenom: r.prenom||'',
-      operateur: r.operateur||'', projet: r.projet||'',
-      pin: r.pin||''
-    });
-  }
-  var snapD = entry.disabled;
-  for(var k4 in snapD){
-    var p4=k4.split("|");
-    if(dates.includes(p4[1])){ await sb.from('disabled_slots').insert({machine:p4[0],date:p4[1],slot:p4[2]}); }
-  }
-  await loadBookings(); await loadDisabled(); render();
-  showToast("✅ Planning restauré");
+  for(var i=0;i<n;i++){ await undo(); }
+  showToast("↶ "+n+" action(s) annulée(s)");
 }
 
 // ─── EXPORT iCAL ──────────────────────────────────────────────────────────────
@@ -1113,8 +1149,9 @@ async function submitBook(machine,date,slot){
   }
   showToast("💾 Enregistrement…");
   var key=machine+"|"+date+"|"+slot;
+  var _before=snapState();
   var ok=await dbAddBooking(machine,date,slot,payload);
-  if(ok){ bookings[key]=payload; addHistoryEntry("Nouvelle réservation", machine+' | '+date+' | '+slot+' — '+payload.nom+' '+payload.prenom+(payload.projet?' ('+payload.projet+')':'')); closeModal(); render(); showToast("✅ Réservation confirmée"); }
+  if(ok){ bookings[key]=payload; addHistoryEntry("Nouvelle réservation", machine+' | '+date+' | '+slot+' — '+payload.nom+' '+payload.prenom+(payload.projet?' ('+payload.projet+')':''), _before.b, _before.d); closeModal(); render(); showToast("✅ Réservation confirmée"); }
 }
 
 function tryDel(key,storedPin){
@@ -1189,12 +1226,13 @@ async function submitEditBooking(key){
   // Déplacement : la case cible doit être libre
   if(bookings[newKey]||disabled[newKey]){ showToast("❌ La case cible est déjà occupée"); return; }
   var payload=Object.assign({pin:bookings[key].pin}, data);
+  var _before=snapState();
   showToast("💾 Déplacement…");
   var okAdd=await dbAddBooking(nm,nd,ns,payload);
   if(!okAdd) return;
   await dbDeleteBooking(parts[0],parts[1],parts[2]);
   bookings[newKey]=payload; delete bookings[key];
-  addHistoryEntry("Déplacement réservation", parts.join(' | ')+' → '+nm+' | '+nd+' | '+ns+' — '+payload.nom+' '+payload.prenom, bookings, disabled);
+  addHistoryEntry("Déplacement réservation", parts.join(' | ')+' → '+nm+' | '+nd+' | '+ns+' — '+payload.nom+' '+payload.prenom, _before.b, _before.d);
   closeModal(); render(); showToast("✅ Réservation déplacée");
 }
 
@@ -1255,12 +1293,13 @@ async function moveBooking(srcKey,destKey){
   if(bookings[destKey]||disabled[destKey]){ showToast("❌ Case déjà occupée"); render(); return; }
   var sp=srcKey.split('|'), dp=destKey.split('|');
   var payload={nom:r.nom,prenom:r.prenom,operateur:r.operateur,projet:r.projet,pin:r.pin};
+  var _before=snapState();
   showToast("💾 Déplacement…");
   var ok=await dbAddBooking(dp[0],dp[1],dp[2],payload);
   if(!ok) return;
   await dbDeleteBooking(sp[0],sp[1],sp[2]);
   bookings[destKey]=payload; delete bookings[srcKey];
-  addHistoryEntry("Déplacement réservation", sp.join(' | ')+' → '+dp.join(' | ')+' — '+r.nom+' '+r.prenom, bookings, disabled);
+  addHistoryEntry("Déplacement réservation", sp.join(' | ')+' → '+dp.join(' | ')+' — '+r.nom+' '+r.prenom, _before.b, _before.d);
   closeModal(); render(); showToast("✅ Réservation déplacée");
 }
 
