@@ -281,7 +281,7 @@
     <button class="btn btn-nav" onclick="changeWeek(7)">▶</button>
   </div>
   <div class="toolbar-actions">
-    <button class="btn btn-export" onclick="exportCSV()">↓ CSV</button>
+    <button class="btn btn-export" id="exportBtn" onclick="exportCSV()" style="display:none">↓ CSV</button>
     <button class="btn btn-nav" onclick="startMachineCarousel()">👁 Plannings</button>
     <button class="btn btn-admin" id="adminBtn" onclick="toggleAdmin()">⚙ Admin</button>
   </div>
@@ -605,6 +605,7 @@ function applyAdminUI(){
   document.getElementById("adminBanner").classList.toggle("visible",isAdmin);
   document.getElementById("headerIcon").classList.toggle("admin-mode",isAdmin);
   document.getElementById("grid").classList.toggle("is-admin",isAdmin);
+  document.getElementById("exportBtn").style.display = isAdmin ? "" : "none";
 }
 
 // ─── MACHINE MANAGER avec drag & drop ────────────────────────────────────────
@@ -1265,6 +1266,7 @@ async function moveBooking(srcKey,destKey){
 
 // ─── CSV ───────────────────────────────────────────────────────────────────────
 function exportCSV(){
+  if(!isAdmin){ showToast("⛔ Export réservé à l'administrateur"); return; }
   var keys=Object.keys(bookings);
   if(!keys.length){ alert("Aucune réservation à exporter."); return; }
   var csv="Machine;Date;Créneau;Nom;Prénom;Opérateur;Projet\n";
