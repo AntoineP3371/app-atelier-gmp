@@ -77,8 +77,10 @@
   .slot-cell{min-width:130px;height:auto;min-height:80px;padding:6px 8px;position:relative;transition:background .15s}
   .slot-cell.free{background:#fff;cursor:pointer}
   .slot-cell.free:hover{background:#f0f7ff}
-  .slot-cell.booked{cursor:pointer}
+  .slot-cell.booked{cursor:grab}
+  .slot-cell.booked:active{cursor:grabbing}
   .slot-cell.booked:hover{filter:brightness(.94)}
+  .slot-cell.drop-target{outline:2px dashed var(--primary);outline-offset:-2px;background:#eef5ff!important}
   .slot-cell.disabled{background:var(--disabled-bg);border-left:3px solid var(--disabled-border)!important;cursor:default}
   .slot-cell.today-col.free{background:#f0f7ff}
   .slot-cell.today-col.disabled{background:#e8edf4}
@@ -1031,6 +1033,7 @@ function book(machine,date,slot){
           "<div class='row'><span>Projet</span><span>"+(r.projet?esc(r.projet):"—")+"</span></div>"+
         "</div>"+
         "<div class='modal-actions'>"+
+          "<button class='btn btn-ok' onclick='openEditBookingModal(\""+jsesc(key)+"\")'>✏️ Modifier</button>"+
           "<button class='btn btn-del' onclick='adminDel(\""+jsesc(key)+"\")'>🗑 Supprimer</button>"+
           "<button class='btn btn-close' onclick='closeModal()'>Fermer</button>"+
         "</div>"
@@ -1126,9 +1129,18 @@ function tryEdit(key,storedPin){
 
 function openEditBookingModal(key){
   var r=bookings[key]; var parts=key.split("|");
+  var days=getTwoWeekDays();
+  var machineOpts=machines.map(function(m){ return "<option value='"+esc(m)+"'"+(m===parts[0]?" selected":"")+">"+esc(m)+"</option>"; }).join("");
+  var dateOpts=days.map(function(d){ var v=fmt(d); var lbl=d.toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'}); return "<option value='"+v+"'"+(v===parts[1]?" selected":"")+">"+esc(lbl)+"</option>"; }).join("");
+  if(!days.some(function(d){ return fmt(d)===parts[1]; })){ dateOpts="<option value='"+parts[1]+"' selected>"+esc(parts[1])+"</option>"+dateOpts; }
+  var slotOpts=SLOTS.map(function(s){ return "<option value='"+esc(s)+"'"+(s===parts[2]?" selected":"")+">"+esc(s)+"</option>"; }).join("");
   openModal(
     "<h2>Modifier la réservation</h2>"+
-    "<div class='meta'>"+esc(parts[0])+" — "+esc(parts[1])+" — "+esc(parts[2])+"</div>"+
+    "<div class='form-row'>"+
+      "<div class='form-group'><label>Machine</label><div class='operateur-select-wrap'><select id='edit-machine'>"+machineOpts+"</select></div></div>"+
+      "<div class='form-group'><label>Date</label><div class='operateur-select-wrap'><select id='edit-date'>"+dateOpts+"</select></div></div>"+
+      "<div class='form-group'><label>Créneau</label><div class='operateur-select-wrap'><select id='edit-slot'>"+slotOpts+"</select></div></div>"+
+    "</div>"+
     "<div class='form-row'>"+
       "<div class='form-group'><label>Nom <span class='req'>*</span></label><input type='text' id='edit-nom' value='"+esc(r.nom)+"' autocomplete='off'><span class='field-err' id='edit-nom-err'>Obligatoire</span></div>"+
       "<div class='form-group'><label>Prénom <span class='req'>*</span></label><input type='text' id='edit-prenom' value='"+esc(r.prenom)+"' autocomplete='off'><span class='field-err' id='edit-prenom-err'>Obligatoire</span></div>"+
@@ -1161,9 +1173,94 @@ async function submitEditBooking(key){
   if(document.getElementById("edit-operateur").value==="__new__" && opVal && !operateurs.includes(opVal)){ operateurs.push(opVal); operateursPhone[opVal]={phone:'',apikey:''}; await sb.from('operateurs').insert({name:opVal, phone:'', apikey:''}); }
   var parts=key.split("|");
   var data={nom:document.getElementById("edit-nom").value.trim(),prenom:document.getElementById("edit-prenom").value.trim(),operateur:opVal,projet:document.getElementById("edit-projet").value.trim()};
-  showToast("💾 Mise à jour…");
-  var ok=await dbUpdateBooking(parts[0],parts[1],parts[2],data);
-  if(ok){ addHistoryEntry("Modification réservation", parts[0]+' | '+parts[1]+' | '+parts[2]+' — '+data.nom+' '+data.prenom); Object.assign(bookings[key],data); closeModal(); render(); showToast("✅ Réservation modifiée"); }
+  // Nouvelle place choisie (machine / date / créneau)
+  var nm=document.getElementById("edit-machine").value;
+  var nd=document.getElementById("edit-date").value;
+  var ns=document.getElementById("edit-slot").value;
+  var newKey=nm+"|"+nd+"|"+ns;
+  if(newKey===key){
+    // Place inchangée → simple mise à jour des champs
+    showToast("💾 Mise à jour…");
+    var ok=await dbUpdateBooking(parts[0],parts[1],parts[2],data);
+    if(ok){ addHistoryEntry("Modification réservation", parts[0]+' | '+parts[1]+' | '+parts[2]+' — '+data.nom+' '+data.prenom); Object.assign(bookings[key],data); closeModal(); render(); showToast("✅ Réservation modifiée"); }
+    return;
+  }
+  // Déplacement : la case cible doit être libre
+  if(bookings[newKey]||disabled[newKey]){ showToast("❌ La case cible est déjà occupée"); return; }
+  var payload=Object.assign({pin:bookings[key].pin}, data);
+  showToast("💾 Déplacement…");
+  var okAdd=await dbAddBooking(nm,nd,ns,payload);
+  if(!okAdd) return;
+  await dbDeleteBooking(parts[0],parts[1],parts[2]);
+  bookings[newKey]=payload; delete bookings[key];
+  addHistoryEntry("Déplacement réservation", parts.join(' | ')+' → '+nm+' | '+nd+' | '+ns+' — '+payload.nom+' '+payload.prenom, bookings, disabled);
+  closeModal(); render(); showToast("✅ Réservation déplacée");
+}
+
+// ─── DÉPLACEMENT PAR GLISSER-DÉPOSER ───────────────────────────────────────────
+var _dragKey=null;
+function onSlotDragStart(ev,key){
+  if(!bookings[key]){ ev.preventDefault(); return; }
+  _dragKey=key;
+  if(ev.dataTransfer){ ev.dataTransfer.effectAllowed='move'; try{ ev.dataTransfer.setData('text/plain',key); }catch(e){} }
+}
+function clearDropTargets(){ document.querySelectorAll('.slot-cell.drop-target').forEach(function(el){ el.classList.remove('drop-target'); }); }
+function onSlotDragEnd(){ _dragKey=null; clearDropTargets(); }
+function onSlotDragOver(ev,targetKey){
+  if(!_dragKey||_dragKey===targetKey) return;
+  if(bookings[targetKey]||disabled[targetKey]) return; // case occupée → pas de dépôt
+  ev.preventDefault();
+  if(ev.dataTransfer) ev.dataTransfer.dropEffect='move';
+  if(ev.currentTarget&&ev.currentTarget.classList) ev.currentTarget.classList.add('drop-target');
+}
+function onSlotDragLeave(ev){ if(ev.currentTarget&&ev.currentTarget.classList) ev.currentTarget.classList.remove('drop-target'); }
+function onSlotDrop(ev,targetKey){
+  var src=_dragKey; _dragKey=null;
+  clearDropTargets();
+  if(!src||src===targetKey) return;
+  ev.preventDefault();
+  if(!bookings[src]) return;
+  if(bookings[targetKey]||disabled[targetKey]){ showToast("❌ Case déjà occupée"); return; }
+  if(isAdmin){ moveBooking(src,targetKey); }
+  else { promptPinMove(src,targetKey); }
+}
+// Utilisateur : demande le code avant de déplacer
+function promptPinMove(srcKey,destKey){
+  var r=bookings[srcKey]; if(!r) return;
+  var sp=srcKey.split('|'), dp=destKey.split('|');
+  var dLabel=new Date(dp[1]+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long'});
+  openModal(
+    "<h2>Déplacer la réservation</h2>"+
+    "<div class='meta'>"+esc(sp[0])+" "+esc(sp[2])+" &nbsp;→&nbsp; "+esc(dp[0])+" — "+esc(dLabel)+" — "+esc(dp[2])+"</div>"+
+    "<div class='form-group' style='margin-bottom:4px'>"+
+      "<label>Code de modification</label>"+
+      "<input type='password' id='movePin' placeholder='Code PIN' maxlength='8' autocomplete='off'>"+
+      "<span class='pin-error' id='movePinErr'>Code incorrect.</span>"+
+    "</div>"+
+    "<div class='modal-actions'>"+
+      "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
+      "<button class='btn btn-ok' onclick='confirmPinMove(\""+jsesc(srcKey)+"\",\""+jsesc(destKey)+"\",\""+jsesc(r.pin)+"\")'>Déplacer</button>"+
+    "</div>"
+  );
+  setTimeout(function(){ var el=document.getElementById('movePin'); if(el) el.focus(); },50);
+}
+function confirmPinMove(srcKey,destKey,storedPin){
+  var entered=document.getElementById('movePin').value.trim();
+  if(entered!==storedPin){ document.getElementById('movePinErr').style.display='block'; document.getElementById('movePin').classList.add('err'); return; }
+  moveBooking(srcKey,destKey);
+}
+async function moveBooking(srcKey,destKey){
+  var r=bookings[srcKey]; if(!r) return;
+  if(bookings[destKey]||disabled[destKey]){ showToast("❌ Case déjà occupée"); render(); return; }
+  var sp=srcKey.split('|'), dp=destKey.split('|');
+  var payload={nom:r.nom,prenom:r.prenom,operateur:r.operateur,projet:r.projet,pin:r.pin};
+  showToast("💾 Déplacement…");
+  var ok=await dbAddBooking(dp[0],dp[1],dp[2],payload);
+  if(!ok) return;
+  await dbDeleteBooking(sp[0],sp[1],sp[2]);
+  bookings[destKey]=payload; delete bookings[srcKey];
+  addHistoryEntry("Déplacement réservation", sp.join(' | ')+' → '+dp.join(' | ')+' — '+r.nom+' '+r.prenom, bookings, disabled);
+  closeModal(); render(); showToast("✅ Réservation déplacée");
 }
 
 // ─── CSV ───────────────────────────────────────────────────────────────────────
@@ -1219,7 +1316,10 @@ function render(){
           }
         }
         var click=bl?"":" onclick='book(\""+jsesc(machine)+"\",\""+fmt(day)+"\",\""+slot+"\")'";
-        html+="<td class='day-col' data-col='"+di+"'><div class='slot-cell "+cls+"'"+inlineStyle+click+">"+adm+content+"</div></td>";
+        // Glisser-déposer : toute case peut recevoir ; seule une case réservée est déplaçable
+        var dragAttrs=" ondragover='onSlotDragOver(event,\""+jsesc(key)+"\")' ondragleave='onSlotDragLeave(event)' ondrop='onSlotDrop(event,\""+jsesc(key)+"\")'";
+        if(r && !bl) dragAttrs+=" draggable='true' ondragstart='onSlotDragStart(event,\""+jsesc(key)+"\")' ondragend='onSlotDragEnd()'";
+        html+="<td class='day-col' data-col='"+di+"'><div class='slot-cell "+cls+"'"+inlineStyle+click+dragAttrs+">"+adm+content+"</div></td>";
       });
       html+="</tr>";
     });
