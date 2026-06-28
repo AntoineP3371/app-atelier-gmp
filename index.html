@@ -10,14 +10,14 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
-    --bg:#f7f8fc; --surface:#fff; --border:#e2e6f0;
-    --primary:#2563eb; --primary-light:#dbeafe; --primary-dark:#1d4ed8;
-    --booked:#bfdbfe; --booked-border:#3b82f6; --free-text:#16a34a;
-    --text:#1e293b; --muted:#64748b;
+    --bg:#f3f9fc; --surface:#fff; --border:#d6e6ef;
+    --primary:#0083ba; --primary-light:#e2f4fc; --primary-dark:#00688f;
+    --booked:#c2e9fa; --booked-border:#00aeef; --free-text:#16a34a;
+    --text:#13303d; --muted:#5b7686;
     --danger:#ef4444; --danger-light:#fee2e2;
     --admin:#7c3aed; --admin-light:#ede9fe; --admin-dark:#5b21b6;
-    --disabled-bg:#f1f5f9; --disabled-border:#94a3b8;
-    --radius:10px; --shadow:0 2px 12px rgba(0,0,0,.07);
+    --disabled-bg:#eef3f6; --disabled-border:#90a8b4;
+    --radius:10px; --shadow:0 2px 12px rgba(0,40,60,.08);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:24px 16px}
@@ -69,20 +69,20 @@
   .table-wrap{overflow-x:auto;border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border);background:var(--surface)}
   #mainWrap{overflow:auto;max-height:calc(100vh - 310px)}
   table{border-collapse:collapse;width:100%;min-width:680px}
-  th{background:#f1f5ff;padding:10px 8px;font-size:.82rem;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap}
+  th{background:#e8f5fb;padding:10px 8px;font-size:.82rem;font-weight:700;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap}
   th.today-col{background:var(--primary-light);color:var(--primary-dark)}
   td{border:1px solid var(--border);padding:0;vertical-align:top}
   td.machine-label{padding:8px 10px;font-weight:700;font-size:.88rem;border-right:2px solid var(--border);white-space:nowrap;vertical-align:middle;text-align:left;min-width:100px}
   .machine-color-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;border:1px solid rgba(0,0,0,.15);vertical-align:middle}
   .slot-cell{min-width:130px;height:auto;min-height:80px;padding:6px 8px;position:relative;transition:background .15s}
   .slot-cell.free{background:#fff;cursor:pointer}
-  .slot-cell.free:hover{background:#f0f7ff}
+  .slot-cell.free:hover{background:#e8f6fc}
   .slot-cell.booked{cursor:grab}
   .slot-cell.booked:active{cursor:grabbing}
   .slot-cell.booked:hover{filter:brightness(.94)}
-  .slot-cell.drop-target{outline:2px dashed var(--primary);outline-offset:-2px;background:#eef5ff!important}
+  .slot-cell.drop-target{outline:2px dashed var(--primary);outline-offset:-2px;background:#ddf2fb!important}
   .slot-cell.disabled{background:var(--disabled-bg);border-left:3px solid var(--disabled-border)!important;cursor:default}
-  .slot-cell.today-col.free{background:#f0f7ff}
+  .slot-cell.today-col.free{background:#e8f6fc}
   .slot-cell.today-col.disabled{background:#e8edf4}
   .slot-time{font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.03em;margin-bottom:3px}
   .slot-free-label{font-size:.78rem;color:var(--free-text);font-weight:600}
@@ -108,7 +108,7 @@
   #grid table{border-collapse:separate;border-spacing:0}
   #grid th,#grid td{border-bottom:1px solid var(--border);border-right:1px solid var(--border)}
   #grid th{border-bottom:2px solid var(--border)}
-  #grid thead th{position:sticky;top:0;z-index:2;background:#f1f5ff}
+  #grid thead th{position:sticky;top:0;z-index:2;background:#e8f5fb}
   #grid thead th:first-child{position:sticky;top:0;left:0;z-index:3}
   #grid td.machine-label{position:sticky;left:0;z-index:1;box-shadow:2px 0 4px rgba(0,0,0,.06)}
   .carousel-header-full{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap}
@@ -297,8 +297,8 @@
 
 <div class="legend">
   <span class="legend-item"><span class="legend-dot" style="background:#fff;border-color:#e2e6f0"></span>Libre</span>
-  <span class="legend-item"><span class="legend-dot" style="background:#bfdbfe;border-color:#3b82f6"></span>Réservé (couleur machine)</span>
-  <span class="legend-item"><span class="legend-dot" style="background:#f0f7ff;border-color:#e2e6f0"></span>Aujourd'hui</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#c2e9fa;border-color:#00aeef"></span>Réservé (couleur machine)</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#e8f6fc;border-color:#e2e6f0"></span>Aujourd'hui</span>
   <span class="legend-item"><span class="legend-dot" style="background:#f1f5f9;border-color:#94a3b8"></span>Bloqué</span>
 </div>
 
