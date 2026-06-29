@@ -162,6 +162,30 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   .toast{position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:10px 18px;border-radius:8px;font-size:.85rem;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
   .toast.show{opacity:1}
+  .disclaimer-note{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:8px;padding:9px 12px;font-size:.78rem;line-height:1.45;margin:12px 0}
+  /* ── Assistant disponibilités ── */
+  #chatFab{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;border:none;background:var(--primary);color:#fff;font-size:24px;cursor:pointer;box-shadow:0 4px 16px rgba(0,40,60,.25);z-index:1000;transition:transform .15s,background .15s}
+  #chatFab:hover{background:var(--primary-dark);transform:scale(1.06)}
+  #chatPanel{position:fixed;bottom:90px;right:24px;width:360px;max-width:calc(100vw - 32px);height:480px;max-height:calc(100vh - 130px);background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 40px rgba(0,40,60,.22);z-index:1000;display:none;flex-direction:column;overflow:hidden}
+  #chatPanel.open{display:flex}
+  .chat-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--primary);color:#fff}
+  .chat-title{font-weight:700;font-size:.95rem}
+  .chat-close{background:transparent;border:none;color:#fff;font-size:16px;cursor:pointer;opacity:.85}
+  .chat-close:hover{opacity:1}
+  .chat-note{background:#fff7ed;border-bottom:1px solid #fed7aa;color:#9a3412;padding:8px 12px;font-size:.72rem;line-height:1.4}
+  .chat-msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+  .chat-msg{max-width:85%;padding:9px 12px;border-radius:12px;font-size:.85rem;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+  .chat-msg.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--border);color:var(--text);border-bottom-left-radius:3px}
+  .chat-msg.user{align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:3px}
+  .chat-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 0;background:var(--surface)}
+  .chat-chip{background:var(--primary-light);color:var(--primary-dark);border:1px solid var(--border);border-radius:14px;padding:4px 10px;font-size:.72rem;cursor:pointer;white-space:nowrap}
+  .chat-chip:hover{background:var(--primary);color:#fff}
+  .chat-form{display:flex;gap:8px;padding:10px 12px;background:var(--surface);border-top:1px solid var(--border)}
+  .chat-form input{flex:1;border:1.5px solid var(--border);border-radius:8px;padding:9px 11px;font-size:.85rem;color:var(--text);background:var(--bg);outline:none;font-family:inherit}
+  .chat-form input:focus{border-color:var(--primary);background:#fff}
+  .chat-form button{border:none;background:var(--primary);color:#fff;border-radius:8px;width:40px;font-size:16px;cursor:pointer}
+  .chat-form button:hover{background:var(--primary-dark)}
+  @media(max-width:640px){ #chatPanel{bottom:84px;right:12px;left:12px;width:auto;height:70vh} #chatFab{bottom:16px;right:16px} }
   /* ── Wrapper centré bureau ── */
   .page-wrap{width:100%;max-width:1200px;margin:0 auto}
   /* ── Onglets jour (mobile uniquement) ── */
@@ -307,6 +331,22 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- ─── ASSISTANT DISPONIBILITÉS ─── -->
+<button id="chatFab" onclick="toggleChat()" title="Assistant disponibilités" aria-label="Assistant disponibilités">💬</button>
+<div id="chatPanel" aria-hidden="true">
+  <div class="chat-head">
+    <span class="chat-title">🤖 Assistant dispo</span>
+    <button class="chat-close" onclick="toggleChat()" aria-label="Fermer">✕</button>
+  </div>
+  <div class="chat-note">⚠️ Ce planning ne tient pas compte de l'emploi du temps pédagogique des opérateurs et des machines. Consultez l'opérateur en amont de votre réservation.</div>
+  <div class="chat-msgs" id="chatMsgs"></div>
+  <div class="chat-chips" id="chatChips"></div>
+  <form class="chat-form" onsubmit="return chatSubmit(event)">
+    <input type="text" id="chatInput" placeholder="Ex. : machines libres demain matin ?" autocomplete="off">
+    <button type="submit" aria-label="Envoyer">➤</button>
+  </form>
+</div>
 
 <script>
 // ─── SUPABASE CONFIG ───────────────────────────────────────────────────────────
@@ -1119,6 +1159,7 @@ function book(machine,date,slot){
       "<span class='field-err' id='epin'>Obligatoire</span>"+
       "<span class='pin-hint'>Sera demandé pour modifier ou annuler votre réservation.</span>"+
     "</div>"+
+    "<div class='disclaimer-note'>⚠️ Ce planning ne tient pas compte de l'emploi du temps pédagogique des opérateurs et des machines. Pensez à consulter l'opérateur en amont de votre réservation.</div>"+
     "<div class='modal-actions'>"+
       "<button class='btn btn-close' onclick='closeModal()'>Annuler</button>"+
       "<button class='btn btn-ok' onclick='submitBook(\""+jsesc(machine)+"\",\""+date+"\",\""+slot+"\")'>✔ Confirmer</button>"+
@@ -1509,6 +1550,177 @@ function startNotificationChecker(){
   }
   check();
   setInterval(check, 60000);
+}
+
+// ─── ASSISTANT DISPONIBILITÉS (local, sans IA externe) ─────────────────────────
+var chatStarted=false;
+function toggleChat(){
+  var p=document.getElementById('chatPanel');
+  var open=p.classList.toggle('open');
+  p.setAttribute('aria-hidden', open?'false':'true');
+  if(open){
+    if(!chatStarted){ chatStarted=true; chatBotSay("Bonjour ! Posez-moi une question sur les disponibilités des machines."); chatRenderChips(); }
+    setTimeout(function(){ var i=document.getElementById('chatInput'); if(i) i.focus(); },50);
+  }
+}
+function chatRenderChips(){
+  var chips=["Machines libres demain matin ?","Disponibilités de la DIAM850 ?","Prochain créneau libre ?"];
+  if(operateurs && operateurs.length){ chips.push("Dispo de l'opérateur "+operateurs[0]+" ?"); }
+  var c=document.getElementById('chatChips');
+  c.innerHTML=chips.map(function(t){ return "<button type='button' class='chat-chip' onclick='chatAsk(this.textContent)'>"+esc(t)+"</button>"; }).join('');
+}
+function chatAddMsg(text,who){
+  var m=document.createElement('div'); m.className='chat-msg '+who; m.textContent=text;
+  var box=document.getElementById('chatMsgs'); box.appendChild(m); box.scrollTop=box.scrollHeight;
+}
+function chatBotSay(t){ chatAddMsg(t,'bot'); }
+function chatSubmit(ev){ ev.preventDefault(); var i=document.getElementById('chatInput'); var v=i.value.trim(); if(v){ chatAsk(v); i.value=''; } return false; }
+function chatAsk(text){ chatAddMsg(text,'user'); chatRespond(text).then(function(ans){ chatBotSay(ans); }).catch(function(e){ chatBotSay("Désolé, une erreur est survenue."); }); }
+
+// Utilitaires date
+function chatDeacc(s){ return String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
+function chatCompact(s){ return chatDeacc(s).replace(/[^a-z0-9]/g,''); }
+function chatBizDays(from,count){ var out=[],d=new Date(from); d.setHours(12,0,0,0); while(out.length<count){ var w=d.getDay(); if(w!==0&&w!==6) out.push(new Date(d)); d.setDate(d.getDate()+1); } return out; }
+function chatNextWeekday(wd,from){ var d=new Date(from); d.setHours(12,0,0,0); for(var i=0;i<14;i++){ if(d.getDay()===wd) return new Date(d); d.setDate(d.getDate()+1); } return null; }
+function chatFrLong(d){ return d.toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long'}); }
+function chatFrShort(d){ return d.toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'}); }
+
+// Récupère la disponibilité (réservations + créneaux bloqués) pour une liste de dates
+async function chatFetch(dates){
+  var res={booked:{},disabled:{},opBusy:{}};
+  if(!dates.length) return res;
+  var rb=await sb.from('bookings').select('machine,date,slot,operateur').in('date',dates);
+  (rb.data||[]).forEach(function(r){
+    res.booked[r.machine+'|'+r.date+'|'+r.slot]=true;
+    if(r.operateur){ var dk=r.date+'|'+r.slot; (res.opBusy[dk]=res.opBusy[dk]||[]).push(r.operateur); }
+  });
+  var rd=await sb.from('disabled_slots').select('machine,date,slot').in('date',dates);
+  (rd.data||[]).forEach(function(r){ res.disabled[r.machine+'|'+r.date+'|'+r.slot]=true; });
+  return res;
+}
+
+async function chatRespond(text){
+  if(!machines || !machines.length) return "Les machines ne sont pas encore chargées, réessayez dans un instant.";
+  var n=chatDeacc(text), c=chatCompact(text);
+  var today=new Date(); today.setHours(12,0,0,0);
+
+  // 1) Machines mentionnées (exactes ou par famille, ex. "diam850")
+  var matched=[];
+  machines.forEach(function(m){
+    var cm=chatCompact(m), fam=chatCompact(m.replace(/\s*-\s*\d+\s*$/,''));
+    if(c.indexOf(cm)>=0 || (fam.length>=3 && c.indexOf(fam)>=0)) matched.push(m);
+  });
+  matched=matched.filter(function(v,i,a){ return a.indexOf(v)===i; });
+
+  // 1bis) Opérateurs mentionnés (par nom ou prénom, ≥4 lettres)
+  var matchedOps=[];
+  (operateurs||[]).forEach(function(o){
+    if(!o) return;
+    var toks=chatDeacc(o).split(/\s+/).map(function(t){ return t.replace(/[^a-z0-9]/g,''); }).filter(function(t){ return t.length>=4; });
+    if(toks.some(function(t){ return c.indexOf(t)>=0; })) matchedOps.push(o);
+  });
+  matchedOps=matchedOps.filter(function(v,i,a){ return a.indexOf(v)===i; });
+  var opIntent = matchedOps.length && (/operateu?r|\bop\b/.test(n) || !matched.length);
+
+  // 2) Créneau
+  var wantM=/matin|(^|[^0-9])0?8h/.test(n), wantA=/apres|aprem|midi|14h|16h|18h/.test(n);
+  var slot=(wantM&&!wantA)?'08h-12h':(wantA&&!wantM)?'14h-18h':null;
+  var slots=slot?[slot]:SLOTS.slice();
+
+  // 3) Mode "prochain créneau"
+  var nextMode=/prochain|prochaine|premier creneau|premiere dispo|des que possible|au plus tot/.test(n);
+
+  // 4) Date ciblée
+  var targetDate=null;
+  if(/aujou?rd|\bauj\b/.test(n)) targetDate=new Date(today);
+  else if(/apres.?demain/.test(n)) targetDate=(function(){var d=new Date(today);d.setDate(d.getDate()+2);return d;})();
+  else if(/demain/.test(n)) targetDate=(function(){var d=new Date(today);d.setDate(d.getDate()+1);return d;})();
+  else { var wd={dimanche:0,lundi:1,mardi:2,mercredi:3,jeudi:4,vendredi:5,samedi:6}; for(var name in wd){ if(n.indexOf(name)>=0){ targetDate=chatNextWeekday(wd[name],today); break; } } }
+  var md=n.match(/(\d{1,2})[\/\. ](\d{1,2})(?:[\/\. ](\d{2,4}))?/);
+  if(!targetDate && md){ var jj=+md[1],mm=+md[2]-1,yy=md[3]?(+md[3]<100?2000+ +md[3]:+md[3]):today.getFullYear(); var d=new Date(yy,mm,jj,12,0,0); if(!isNaN(d)) targetDate=d; }
+
+  var horizon=chatBizDays(today,14);
+  var fetchDates=targetDate?[fmt(targetDate)]:horizon.map(fmt);
+  if(nextMode) fetchDates=horizon.map(fmt);
+  var av=await chatFetch(fetchDates);
+  function free(m,d,s){ var k=m+'|'+d+'|'+s; return !av.booked[k] && !av.disabled[k]; }
+  function opFree(op,d,s){ var arr=av.opBusy[d+'|'+s]||[]; return arr.indexOf(op)<0; }
+  function listM(a){ return a.join(', '); }
+
+  // O — Disponibilité d'un opérateur (créneaux où il n'est assigné à aucune réservation)
+  if(opIntent){
+    if(targetDate){
+      if(targetDate.getDay()===0||targetDate.getDay()===6) return "Il n'y a pas de créneaux le week-end ("+chatFrLong(targetDate)+").";
+      var dso=fmt(targetDate);
+      var lo=matchedOps.map(function(op){
+        var parts=slots.map(function(s){ return s+" : "+(opFree(op,dso,s)?"✅ disponible":"❌ occupé"); });
+        return "• "+op+" — "+parts.join('  ·  ');
+      });
+      return "Disponibilité opérateur — "+chatFrLong(targetDate)+" :\n"+lo.join('\n');
+    }
+    var lo2=matchedOps.map(function(op){
+      var fl=[];
+      for(var i=0;i<horizon.length && fl.length<8;i++){ for(var s=0;s<slots.length;s++){ if(opFree(op,fmt(horizon[i]),slots[s])) fl.push(chatFrShort(horizon[i])+" "+slots[s]); } }
+      return "• "+op+" : "+(fl.length?fl.join(', ')+(fl.length>=8?'…':''):"occupé sur toute la période");
+    });
+    return "Prochaines disponibilités opérateur :\n"+lo2.join('\n');
+  }
+
+  // A — Prochain créneau libre
+  if(nextMode){
+    var pool=matched.length?matched:machines;
+    for(var i=0;i<horizon.length;i++){ for(var s=0;s<slots.length;s++){
+      var f=pool.filter(function(m){ return free(m,fmt(horizon[i]),slots[s]); });
+      if(f.length) return "Le prochain créneau libre"+(matched.length?(" sur "+listM(matched)):"")+" est le "+chatFrLong(horizon[i])+" ("+slots[s]+") :\n"+(matched.length?"✅ disponible":"✅ "+f.join(', '))+".";
+    }}
+    return "Aucun créneau libre trouvé sur les "+horizon.length+" prochains jours ouvrés"+(matched.length?(" pour "+listM(matched)):"")+".";
+  }
+
+  // B — Date ciblée
+  if(targetDate){
+    if(targetDate.getDay()===0||targetDate.getDay()===6) return "Il n'y a pas de créneaux le week-end ("+chatFrLong(targetDate)+").";
+    var ds=fmt(targetDate);
+    if(matched.length){
+      var lines=matched.map(function(m){
+        var parts=slots.map(function(s){ return s+" : "+(free(m,ds,s)?"✅ libre":"❌ réservé"); });
+        return "• "+m+" — "+parts.join('  ·  ');
+      });
+      return chatFrLong(targetDate)+" :\n"+lines.join('\n');
+    } else {
+      var blocks=slots.map(function(s){
+        var f=machines.filter(function(m){ return free(m,ds,s); });
+        return "• "+s+" : "+(f.length?f.join(', '):"aucune machine libre");
+      });
+      return "Machines libres le "+chatFrLong(targetDate)+" :\n"+blocks.join('\n');
+    }
+  }
+
+  // C — Disponibilités d'une (ou plusieurs) machine sur les prochains jours
+  if(matched.length){
+    var lines2=matched.map(function(m){
+      var fl=[];
+      for(var i=0;i<horizon.length && fl.length<8;i++){ for(var s=0;s<slots.length;s++){ if(free(m,fmt(horizon[i]),slots[s])){ fl.push(chatFrShort(horizon[i])+" "+slots[s]); } } }
+      return "• "+m+" : "+(fl.length?fl.join(', ')+(fl.length>=8?'…':''):"complet sur la période");
+    });
+    return "Prochaines disponibilités :\n"+lines2.join('\n');
+  }
+
+  // C bis — "opérateur" mentionné mais nom non reconnu
+  if(/operateu?r/.test(n) && !matchedOps.length){
+    var sample=(operateurs||[]).slice(0,6).join(', ');
+    return "Je n'ai pas reconnu cet opérateur. Opérateurs connus : "+(sample||'aucun')+(operateurs&&operateurs.length>6?'…':'')+".";
+  }
+
+  // D — Mots-clés génériques → dispos du jour
+  if(/dispo|libre|disponible|machine/.test(n)){
+    var ds2=fmt(today);
+    if(today.getDay()===0||today.getDay()===6) return "Nous sommes le week-end : pas de créneaux aujourd'hui. Essayez « machines libres lundi matin ».";
+    var blocks2=SLOTS.map(function(s){ var f=machines.filter(function(m){ return free(m,ds2,s); }); return "• "+s+" : "+(f.length?f.join(', '):"aucune machine libre"); });
+    return "Machines libres aujourd'hui ("+chatFrLong(today)+") :\n"+blocks2.join('\n');
+  }
+
+  // E — Aide
+  return "Je peux vous renseigner sur les disponibilités. Essayez par exemple :\n• « Machines libres demain après-midi ? »\n• « Disponibilités de la DIAM850 cette semaine ? »\n• « Prochain créneau libre ? »\n• « L'opérateur Dupont est-il dispo jeudi matin ? »";
 }
 
 // ─── DÉMARRAGE ─────────────────────────────────────────────────────────────────
