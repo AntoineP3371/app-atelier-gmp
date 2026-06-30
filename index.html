@@ -338,7 +338,7 @@
   <div>
     <h1>Réservation des machines</h1>
     <p>Planification hebdomadaire des créneaux</p>
-    <p class="app-version">v1.2.1</p>
+    <p class="app-version">v1.2.2</p>
   </div>
   <div class="header-qr">
     <img id="headerQr" src="" alt="QR Code">
@@ -513,7 +513,19 @@ function setupRealtime(){
   sb.channel('planning-rt')
     .on('postgres_changes',{event:'*',schema:'public',table:'bookings'},scheduleRefresh)
     .on('postgres_changes',{event:'*',schema:'public',table:'disabled_slots'},scheduleRefresh)
+    .on('postgres_changes',{event:'*',schema:'public',table:'machines'},scheduleMachinesRefresh)
+    .on('postgres_changes',{event:'*',schema:'public',table:'operateurs'},scheduleOperateursRefresh)
     .subscribe();
+}
+let _machinesRefreshTimer=null;
+function scheduleMachinesRefresh(){
+  clearTimeout(_machinesRefreshTimer);
+  _machinesRefreshTimer=setTimeout(async()=>{ await loadMachines(); render(); },300);
+}
+let _opRefreshTimer=null;
+async function scheduleOperateursRefresh(){
+  clearTimeout(_opRefreshTimer);
+  _opRefreshTimer=setTimeout(async()=>{ await loadOperateurs(); },300);
 }
 
 async function loadMachines(){
