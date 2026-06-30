@@ -280,10 +280,13 @@
   @page{margin:1cm;size:landscape}
   @media print{
     header .header-qr,.toolbar,.admin-banner,.legend,#chatFab,#chatPanel,.toast,.day-tabs,.slot-admin-actions{display:none!important}
-    #mainWrap{overflow:visible!important;max-height:none!important;height:auto!important}
-    .table-wrap{overflow:visible!important}
+    #mainWrap{display:none!important}
+    #printContainer{display:block!important}
+    .print-page{page-break-after:always}
+    .print-page:last-child{page-break-after:avoid}
     body{background:#fff!important}
   }
+  #printContainer{display:none}
 
   /* ── Recherche ── */
   .search-wrap{position:relative;display:flex;align-items:center}
@@ -338,7 +341,7 @@
   <div>
     <h1>Réservation des machines</h1>
     <p>Planification hebdomadaire des créneaux</p>
-    <p class="app-version">v1.3</p>
+    <p class="app-version">v1.3.1</p>
   </div>
   <div class="header-qr">
     <img id="headerQr" src="" alt="QR Code">
@@ -391,6 +394,7 @@
 </div>
 
 <div class="day-tabs" id="dayTabs"></div>
+<div id="printContainer"></div>
 <div class="table-wrap" id="mainWrap"><div id="grid"><div class="loading-bar"><div class="spinner"></div> Chargement des données…</div></div></div>
 
 <div class="legend">
@@ -625,10 +629,69 @@ async function quickToggleMachineStatus(machine){
   else declarePanne(machine);
 }
 
+function buildPrintTable(pageMachines, week){
+  var html="<table style='width:100%;border-collapse:collapse;font-size:.72rem'>";
+  html+="<thead><tr><th style='padding:3px 6px;text-align:left;border:1px solid #ccc;background:#e2f4fc'>Machine / Créneau</th>";
+  week.forEach(d=>{
+    var isT=isToday(d);
+    html+="<th style='padding:3px 6px;text-align:center;border:1px solid #ccc;background:"+(isT?'#b3e5fa':'#e2f4fc')+"'>"+d.toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'})+"</th>";
+  });
+  html+="</tr></thead><tbody>";
+  pageMachines.forEach(machine=>{
+    var color=getMachineColor(machine);
+    var colorLight=hexToRgba(color,0.15);
+    SLOTS.forEach((slot,idx)=>{
+      html+="<tr>";
+      if(idx===0) html+="<td rowspan='"+SLOTS.length+"' style='padding:4px 6px;border:1px solid #ccc;font-weight:700;border-left:3px solid "+color+";background:"+blendWithSurface(color,0.10)+";white-space:nowrap'>"+esc(machine)+"</td>";
+      week.forEach(day=>{
+        var key=machine+'|'+fmt(day)+'|'+slot;
+        var r=bookings[key], bl=disabled[key];
+        var mSt=machineStatus[machine]||'ok';
+        var isPanne=mSt!=='ok'&&fmt(day)>=(machineStatusDate[machine]||'');
+        var td='padding:3px 5px;border:1px solid #ccc;vertical-align:top;font-size:.68rem;';
+        var inner='<div style="color:#5b7686;font-size:.62rem">'+slot+'</div>';
+        if(bl){
+          td+='background:#f1f5f9;color:#94a3b8;';
+          inner+='🔒 Bloqué';
+        } else if(r){
+          td+='background:'+colorLight+';border-left:2px solid '+color+';';
+          inner+='<strong>'+esc(r.nom)+' '+esc(r.prenom)+'</strong>'
+            +(r.operateur?'<br><span style="color:#0083ba">'+esc(r.operateur)+'</span>':'')
+            +(r.projet?'<br><em style="color:#5b7686">'+esc(r.projet)+'</em>':'');
+        } else if(isPanne){
+          td+='background:#fef2f2;color:#b91c1c;';
+          inner+='🔧 '+mSt;
+        } else {
+          td+='color:#16a34a;';
+          inner+='Libre';
+        }
+        html+="<td style='"+td+"'>"+inner+"</td>";
+      });
+      html+="</tr>";
+    });
+  });
+  html+="</tbody></table>";
+  return html;
+}
+
 function printPlanning(){
+  var pages=getCarouselPages();
+  var week=getTwoWeekDays();
+  var weekLabel=week[0].toLocaleDateString('fr-FR')+' – '+week[week.length-1].toLocaleDateString('fr-FR');
+  var container=document.getElementById('printContainer');
+  container.innerHTML=pages.map((pageMachines,pi)=>{
+    return "<div class='print-page'>"
+      +"<div style='display:flex;align-items:baseline;gap:12px;margin-bottom:6px;border-bottom:2px solid #0083ba;padding-bottom:4px'>"
+      +"<strong style='font-size:.95rem;color:#0083ba'>Planning des réservations — Atelier GMP</strong>"
+      +"<span style='font-size:.78rem;color:#5b7686'>"+weekLabel+"</span>"
+      +(pages.length>1?"<span style='margin-left:auto;font-size:.72rem;color:#5b7686'>Page "+(pi+1)+" / "+pages.length+"</span>":"")
+      +"</div>"
+      +buildPrintTable(pageMachines, week)
+      +"</div>";
+  }).join('');
   var t=document.title; document.title='';
   window.print();
-  setTimeout(()=>{ document.title=t; },500);
+  setTimeout(()=>{ document.title=t; container.innerHTML=''; },1000);
 }
 
 // ─── STATISTIQUES ──────────────────────────────────────────────────────────────
