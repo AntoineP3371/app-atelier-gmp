@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Réservation Machines</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0083ba">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Réservation GMP">
 <link rel="icon" type="image/png" sizes="64x64" href="data:image/png;base64,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">
 <link rel="shortcut icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAVxSURBVHhe7VpLiBxFGC7UCB4FD4oHCWh8Cwqioh5EPIkXD559wCqGxZj4QpGYRRQjKr6yTBQlB5HNdFXP7Mys8RVFb5sVRdCDwVdyiGamq7v3kW2j2fH/qmt2Z3p6Zvoxk0GpDz7m0X/9j6+rqqtqhhkYGBgYGBgYGBgYGLDZ5etYNXiUzS5NMeGmoD/Fyiu7WHV1glnyIu1tNJg5tpniPKjiIW5sPj2IuirBNlZyr9XeNPY3z2Rlfy+b+6vJDjab7HPiZymJNmhbC5YYd7dpz8MFdx5jtdWV/DlSnbY/zXY2z9COZYF9TRdKi01SKgdlk+5OGETIZ0LnQ4KQO5XfyolIzAxEnajXct5irCivUYrkLr6N5aVQcSGf0unnA5fPqrs37BwrdLOY7e4I71iMUR62RLCcJ3QZ2cDl00MvvkX4pfH6fHi3IhdtPxwriRiQvdftY0OEHbqcdODOk6o9/ER9Ix7ixuYTQ9QT9QHf9GaqSwAYcxlQFz6ckL+oIKWYIEj+U/KfdmK0nMd7Fo/egOI5xY3PJ4Zu0CVCTwE++huvh1iTZskkLDQ30VB6QQ2lLhFoYiwvaxHkpC6vPyxne9/i0XWRd2FhU2w+cRTud7quDQ4QYF6nkxzCe6mnCLMkwid0rVjfqq3jYclHlFixxZNf+Ldp2KaFkN+mFeCQbpoOwns5TLKPCMJ5SFt3gjcmw+LJDvbt7VvFc/dFbZ0OGXpANgEA4b3aX4Q1mhjrE9o6BJcPK3FwPVo8/Kji5W5tnR6nVQBAuK/3FmGlyT4+hc/3K1vbm1Ci9C/+FWWbFaddAMD23wxFiD4itQhCfb9Pde9+xQvvNe0xO8YiAGD7e9gXPUTAjI5urxY5vYp339Ce8mFsAgDCLcSL0IOwU/Y+rdWHhLEKAJT8dxKJsF68O61bDgdcLrAD/3TGSi3AzJEL2dzJSbUXt5wpeiTtWif8lFeeoxXhfYwfv0C36ITtvaeKC8d+N9eL9/bqFp1A/OrqA6xCcRCvPf5Ayj/CeactXioBeP162ovX2Zdki5UY2kSJ7w8Sa4FkxUY4w0dhe/uUj+hiCfNA+P272rITeGzWAlf57xW/H7Gw4pF5Bt/Tm8EC4OBAyHkVOOokjtgXwKct79IeOiH8glrwwB8mQbzic8l/W1t0QjTuVjZY/0cnyzyET3ozWIDZxfOo8CBcobXZ9SQliec8lz9Slz5Le+lE2buDVU9Ms+pymV730Ji/XV/pBPYZnDYzB7BuGGLxIESnN4MFmDlyDn0+RuO/064f0aXR7az6ZdpLNnDnKjV2uxZUOYherHqz830yAQDhbmdfkR3uRHQfjmOw9vYgEsb33L9Re8iGorxVnVXGPT3gvz2PgaS8URvmmsrqUTbTuCK5AACXW8nJPLMXsb9u32v/vt62RQiA87ti4wbdOhss52aVePzj87eNHAaR8rX9w/QE+YYm893s/V/PDwOkEaCF6F676FypElQrOu1jlAKUKQ6Xp9iH/pauXAaxC1kEiEIc3zIWAWbczdoqB4YiQOPy8QjgXaytcsAIYAQwAhgBjABGgA3nYChA8t8FxrYOGKUAtregdnJJiA3L/0oAJM/dgN7/nJBHid0+/hMC9P11mAIn4Sh3gyMXwBrR/wMwHHAeUPIv1ZGyQchb1FY2KoAl15jlX6KtcsB2rlYKx/0YmZk4EVrDXfpB/f8oD4RzkzqIiQqgXoexGQKsxrT6z0zLcV7ijuG4iTt36gjZ8YF3LgnpqiNtnOSA8C3kTyTu2doqJ7BPxr+m0BMwHHBchHkhLdEO7WtBg+3/817tPT+Edw+bC07SEyc8zakFPg3d2/RVAwMDAwMDAwMDAwODlGDsX0ePAh2Z1LnvAAAAAElFTkSuQmCC">
 <link rel="apple-touch-icon" href="data:image/png;base64,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">
@@ -267,6 +273,48 @@
   .ical-item-label{font-size:.82rem;font-weight:600;color:var(--text)}
   .ical-copy-btn{background:var(--primary-light);color:var(--primary-dark);border:1px solid var(--primary);border-radius:5px;padding:4px 10px;font-size:.76rem;font-weight:600;cursor:pointer}
   .ical-copy-btn:hover{background:var(--primary);color:#fff}
+
+  /* ── Impression ── */
+  @media print{
+    header .header-qr,.toolbar,.admin-banner,.legend,#chatFab,#chatPanel,.toast,.day-tabs,.slot-admin-actions{display:none!important}
+    #mainWrap{overflow:visible!important;max-height:none!important;height:auto!important}
+    .table-wrap{overflow:visible!important}
+    body{background:#fff!important}
+  }
+
+  /* ── Recherche ── */
+  .search-wrap{position:relative;display:flex;align-items:center}
+  .search-input{border:1px solid var(--border);border-radius:8px;padding:5px 10px 5px 26px;font-size:.82rem;color:var(--text);background:var(--surface);outline:none;width:140px;transition:border-color .2s,width .2s;font-family:inherit}
+  .search-input:focus{border-color:var(--primary);width:180px}
+  .search-input::placeholder{color:var(--muted)}
+  .search-icon{position:absolute;left:8px;color:var(--muted);font-size:.8rem;pointer-events:none;user-select:none}
+  .slot-dim{opacity:.15!important}
+  .slot-search-match{outline:2px solid var(--primary)!important;z-index:1;position:relative}
+
+  /* ── Filtre opérateur ── */
+  .op-filter{border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:.82rem;color:var(--text);background:var(--surface);outline:none;cursor:pointer;max-width:140px;font-family:inherit}
+  .op-filter:focus{border-color:var(--primary)}
+
+  /* ── État machine ── */
+  .badge-panne{display:inline-block;background:#fee2e2;color:#b91c1c;border-radius:4px;padding:1px 6px;font-size:.65rem;font-weight:700;margin-top:3px;letter-spacing:.02em}
+  .badge-maintenance{display:inline-block;background:#fef9c3;color:#854d0e;border-radius:4px;padding:1px 6px;font-size:.65rem;font-weight:700;margin-top:3px;letter-spacing:.02em}
+  .slot-unavailable{background:#fef2f2!important;border-left:3px solid #fca5a5!important;cursor:not-allowed!important;opacity:.5!important}
+  .admin-machine-status-btn{display:none;background:none;border:none;cursor:pointer;font-size:.68rem;color:var(--muted);text-decoration:underline;padding:0;margin-top:3px;line-height:1.2}
+  .is-admin .admin-machine-status-btn{display:block}
+
+  /* ── Statistiques ── */
+  .stats-kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .stats-kpi{background:var(--primary-light);border-radius:10px;padding:10px 14px;flex:1;min-width:80px;text-align:center}
+  .stats-kpi-val{font-size:1.4rem;font-weight:700;color:var(--primary)}
+  .stats-kpi-label{font-size:.7rem;color:var(--muted);margin-top:2px}
+  .stats-section{margin-bottom:18px}
+  .stats-section h4{margin:0 0 10px;font-size:.85rem;color:var(--primary-dark);font-weight:700;border-bottom:1px solid var(--border);padding-bottom:5px}
+  .stats-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+  .stats-bar-label{width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:.78rem;flex-shrink:0}
+  .stats-bar{flex:1;height:13px;background:var(--primary-light);border-radius:4px;overflow:hidden}
+  .stats-bar-fill{height:100%;background:var(--primary);border-radius:4px}
+  .stats-bar-count{width:24px;text-align:right;color:var(--muted);font-size:.72rem;flex-shrink:0}
+  @media(max-width:640px){.search-input{width:100px}.search-input:focus{width:130px}}
 </style>
 </head>
 <body>
@@ -301,6 +349,8 @@
     <button class="btn-manage" onclick="openCarouselConfig()">📺 Carrousel</button>
     <button class="btn-manage" onclick="openHistory()">🕐 Historique</button>
     <button class="btn-manage" onclick="openIcalExport()">📅 iCal</button>
+    <button class="btn-manage" onclick="showStats()">📊 Statistiques</button>
+    <button class="btn-manage" onclick="openMachineStatusManager()">🔧 État machines</button>
   </div>
 </div>
 
@@ -312,6 +362,14 @@
     <button class="btn btn-nav" onclick="changeWeek(7)">▶</button>
   </div>
   <div class="toolbar-actions">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="searchInput" type="text" placeholder="Rechercher…" oninput="onSearchInput(this.value)" autocomplete="off">
+    </div>
+    <select class="op-filter" id="opFilterSel" onchange="onOpFilterChange(this.value)" title="Filtrer par opérateur">
+      <option value="">Tous les opérateurs</option>
+    </select>
+    <button class="btn btn-nav" onclick="window.print()" title="Imprimer le planning">🖨</button>
     <button class="btn btn-export" id="exportBtn" onclick="exportCSV()" style="display:none">↓ CSV</button>
     <button class="btn btn-nav" onclick="startMachineCarousel()">👁 Plannings</button>
     <button class="btn btn-admin" id="adminBtn" onclick="toggleAdmin()">⚙ Admin</button>
@@ -378,6 +436,10 @@ let carouselTimer = null;
 let carouselIndex = 0;
 let selectedDayIdx = (function(){ var d=new Date().getDay()-1; return(d>=0&&d<=4)?d:0; })();
 let openModalName  = null;
+let searchTerm     = '';
+let opFilterVal    = '';
+let machineStatus  = {}; // { machineName: 'ok'|'panne'|'maintenance' }
+let machineStatusReason = {};
 // Nouvelles variables
 let carouselPages = null;  // null = auto (3 machines/page), sinon tableau de tableaux de machines
 let history48h    = [];    // historique des 48 dernières heures
@@ -453,8 +515,93 @@ async function loadMachines(){
   } else {
     machines = data.map(r=>r.name);
     machineColors = {};
-    data.forEach(r=>{ machineColors[r.name]=r.color; });
+    machineStatus = {};
+    machineStatusReason = {};
+    data.forEach(r=>{
+      machineColors[r.name]=r.color;
+      if(r.status && r.status!=='ok'){ machineStatus[r.name]=r.status; machineStatusReason[r.name]=r.status_reason||''; }
+    });
   }
+}
+
+// ─── RECHERCHE ─────────────────────────────────────────────────────────────────
+function onSearchInput(val){ searchTerm=val.trim().toLowerCase(); render(); }
+function clearSearch(){ searchTerm=''; var el=document.getElementById('searchInput'); if(el) el.value=''; render(); }
+
+// ─── FILTRE OPÉRATEUR ──────────────────────────────────────────────────────────
+function onOpFilterChange(val){ opFilterVal=val; render(); }
+function populateOpFilter(){
+  var sel=document.getElementById('opFilterSel'); if(!sel) return;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">Tous les opérateurs</option>'+
+    operateurs.map(o=>'<option value="'+esc(o)+'"'+(o===cur?' selected':'')+'>'+esc(o)+'</option>').join('');
+  if(cur) sel.value=cur;
+}
+
+// ─── ÉTAT MACHINES ─────────────────────────────────────────────────────────────
+async function quickToggleMachineStatus(machine){
+  var cur=machineStatus[machine]||'ok';
+  if(cur==='ok'){
+    var reason=prompt('Raison (optionnel) :')||'';
+    await sb.from('machines').update({status:'panne',status_reason:reason}).eq('name',machine);
+    machineStatus[machine]='panne'; machineStatusReason[machine]=reason;
+  } else {
+    await sb.from('machines').update({status:'ok',status_reason:''}).eq('name',machine);
+    delete machineStatus[machine]; delete machineStatusReason[machine];
+  }
+  render();
+}
+function openMachineStatusManager(){
+  var html="<div class='modal-title'>🔧 État des machines</div>";
+  html+="<p style='font-size:.82rem;color:var(--muted);margin-bottom:12px'>Marquez une machine comme en panne ou en maintenance. Les créneaux libres seront automatiquement bloqués.</p>";
+  html+="<table style='width:100%;border-collapse:collapse;font-size:.85rem'><thead><tr><th style='text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)'>Machine</th><th style='text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)'>État</th><th style='padding:6px 8px;border-bottom:1px solid var(--border)'></th></tr></thead><tbody>";
+  machines.forEach(m=>{
+    var st=machineStatus[m]||'ok';
+    var badge=st==='ok'?'<span style="color:var(--free-text);font-weight:600">✔ En service</span>':'<span class="badge-'+st+'">'+st.toUpperCase()+'</span>'+(machineStatusReason[m]?' <em style="font-size:.75rem;color:var(--muted)">'+esc(machineStatusReason[m])+'</em>':'');
+    var btnLabel=st==='ok'?'🔧 Passer en panne':'✔ Remettre en service';
+    html+="<tr style='border-bottom:1px solid var(--border)'><td style='padding:8px'>"+esc(m)+"</td><td style='padding:8px'>"+badge+"</td><td style='padding:8px;text-align:right'><button class='btn' style='font-size:.78rem;padding:4px 10px' onclick='quickToggleMachineStatus(\""+jsesc(m)+"\");closeModal();openMachineStatusManager()'>"+btnLabel+"</button></td></tr>";
+  });
+  html+="</tbody></table>";
+  html+="<div class='modal-actions'><button class='btn' onclick='closeModal()'>Fermer</button></div>";
+  openModal(html);
+}
+
+// ─── STATISTIQUES ──────────────────────────────────────────────────────────────
+function showStats(){
+  var total=Object.keys(bookings).length;
+  var byMachine={};
+  machines.forEach(m=>byMachine[m]=0);
+  Object.keys(bookings).forEach(k=>{ var m=k.split('|')[0]; if(byMachine[m]!==undefined) byMachine[m]++; });
+  var bySlot={};
+  SLOTS.forEach(s=>bySlot[s]=0);
+  Object.keys(bookings).forEach(k=>{ var s=k.split('|')[2]; if(bySlot[s]!==undefined) bySlot[s]++; });
+  var byStudent={};
+  Object.values(bookings).forEach(b=>{ var n=(b.nom||'')+' '+(b.prenom||''); n=n.trim(); if(n) byStudent[n]=(byStudent[n]||0)+1; });
+  var top5=Object.entries(byStudent).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  var week=getTwoWeekDays();
+  var totalSlots=machines.length*week.length*SLOTS.length;
+  var pct=totalSlots>0?Math.round(total/totalSlots*100):0;
+  var maxM=Math.max(...Object.values(byMachine),1);
+  var maxS=Math.max(...Object.values(bySlot),1);
+  var html="<div class='modal-title'>📊 Statistiques (2 semaines)</div>";
+  html+="<div class='stats-kpis'>";
+  html+="<div class='stats-kpi'><div class='stats-kpi-val'>"+total+"</div><div class='stats-kpi-label'>réservations</div></div>";
+  html+="<div class='stats-kpi'><div class='stats-kpi-val'>"+pct+"%</div><div class='stats-kpi-label'>taux d'occupation</div></div>";
+  html+="<div class='stats-kpi'><div class='stats-kpi-val'>"+machines.length+"</div><div class='stats-kpi-label'>machines</div></div>";
+  html+="</div>";
+  html+="<div class='stats-section'><h4>Par machine</h4>";
+  machines.forEach(m=>{ var c=byMachine[m]||0; html+="<div class='stats-bar-row'><span class='stats-bar-label' title='"+esc(m)+"'>"+esc(m)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxM*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
+  html+="</div><div class='stats-section'><h4>Par créneau</h4>";
+  SLOTS.forEach(s=>{ var c=bySlot[s]||0; html+="<div class='stats-bar-row'><span class='stats-bar-label'>"+esc(s)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxS*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
+  html+="</div>";
+  if(top5.length>0){
+    var maxT=top5[0][1];
+    html+="<div class='stats-section'><h4>Top étudiants</h4>";
+    top5.forEach(([n,c])=>{ html+="<div class='stats-bar-row'><span class='stats-bar-label' title='"+esc(n)+"'>"+esc(n)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxT*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
+    html+="</div>";
+  }
+  html+="<div class='modal-actions'><button class='btn' onclick='closeModal()'>Fermer</button></div>";
+  openModal(html);
 }
 
 async function loadOperateurs(){
@@ -471,6 +618,7 @@ async function loadOperateurs(){
     operateursPhone = {};
     data.forEach(r=>{ operateursPhone[r.name] = {phone: r.phone||'', apikey: r.apikey||''}; });
   }
+  populateOpFilter();
 }
 
 async function loadBookings(){
@@ -1439,32 +1587,50 @@ function render(){
 
     SLOTS.forEach((slot,idx)=>{
       html+="<tr>";
-      if(idx===0) html+="<td class='machine-label' rowspan='"+SLOTS.length+"' style='background:"+colorLabel+";border-left:4px solid "+color+"'><span class='machine-color-dot' style='background:"+color+"'></span>"+esc(machine)+"</td>";
+      if(idx===0){
+        var mSt=machineStatus[machine]||'ok';
+        var mBadge=mSt!=='ok'?'<br><span class="badge-'+mSt+'">'+mSt.toUpperCase()+(machineStatusReason[machine]?' — '+esc(machineStatusReason[machine]):'')+'</span>':'';
+        var mBtn='<button class="admin-machine-status-btn" onclick="event.stopPropagation();quickToggleMachineStatus(\''+jsesc(machine)+'\')">'+(mSt!=='ok'?'✔ Remettre en service':'🔧 Panne')+'</button>';
+        html+="<td class='machine-label' rowspan='"+SLOTS.length+"' style='background:"+colorLabel+";border-left:4px solid "+color+"'><span class='machine-color-dot' style='background:"+color+"'></span>"+esc(machine)+mBadge+mBtn+"</td>";
+      }
       week.forEach((day,di)=>{
         var key=machine+"|"+fmt(day)+"|"+slot;
         var r=bookings[key],bl=disabled[key];
+        var mSt=machineStatus[machine]||'ok';
+        var isPanne=mSt!=='ok';
         var tc=isToday(day)?" today-col":"";
         var cls,content,adm="",inlineStyle="";
+        var isFilterActive=searchTerm||opFilterVal;
         if(bl){
-          cls="disabled"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>";
+          cls="disabled"+tc;
+          content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>";
           if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn unlock' title='Débloquer' onclick='event.stopPropagation();adminUnlock(\""+jsesc(key)+"\")'>✔</button></div>";
+          if(isFilterActive) cls+=" slot-dim";
         } else if(r){
           cls="booked"+tc; inlineStyle=" style='background:"+colorLight+";border-left:3px solid "+color+"!important'";
           content="<div class='slot-time'>"+slot+"</div>"+
             "<div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div>"+
             (r.operateur?"<div class='slot-operateur'>"+esc(r.operateur)+"</div>":"")+
             (r.projet?"<div class='slot-projet'>"+esc(r.projet)+"</div>":"");
-          if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn del' title='Supprimer' onclick='event.stopPropagation();adminDel(\""+jsesc(key)+"\")'>✕</button></div>";
-        } else {
-          cls="free"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>";
-          if(isAdmin){
-            adm="<div class='slot-admin-actions'><button class='admin-slot-btn lock' title='Bloquer ce créneau' onclick='event.stopPropagation();adminLock(\""+jsesc(key)+"\")'>🔒</button></div>";
+          if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn del' title='Supprimer' onclick='event.stopPropagation();adminDel(\""+jsesc(key)+"\")'>✕</button><button class='admin-slot-btn edit' title='Modifier' onclick='event.stopPropagation();openEditBookingModal(\""+jsesc(key)+"\")'>✏️</button></div>";
+          if(isFilterActive){
+            var st=searchTerm;
+            var ms=!st||(r.nom&&r.nom.toLowerCase().includes(st))||(r.prenom&&r.prenom.toLowerCase().includes(st))||(r.projet&&r.projet.toLowerCase().includes(st));
+            var mo=!opFilterVal||r.operateur===opFilterVal;
+            cls+=(ms&&mo)?" slot-search-match":" slot-dim";
           }
+        } else if(isPanne){
+          cls="slot-unavailable"+tc;
+          content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔧 "+mSt.charAt(0).toUpperCase()+mSt.slice(1)+"</div>";
+        } else {
+          cls="free"+tc;
+          content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>";
+          if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn lock' title='Bloquer ce créneau' onclick='event.stopPropagation();adminLock(\""+jsesc(key)+"\")'>🔒</button></div>";
+          if(isFilterActive) cls+=" slot-dim";
         }
-        var click=bl?"":" onclick='book(\""+jsesc(machine)+"\",\""+fmt(day)+"\",\""+slot+"\")'";
-        // Glisser-déposer : toute case peut recevoir ; seule une case réservée est déplaçable
-        var dragAttrs=" ondragover='onSlotDragOver(event,\""+jsesc(key)+"\")' ondragleave='onSlotDragLeave(event)' ondrop='onSlotDrop(event,\""+jsesc(key)+"\")'";
-        if(r && !bl) dragAttrs+=" draggable='true' ondragstart='onSlotDragStart(event,\""+jsesc(key)+"\")' ondragend='onSlotDragEnd()'";
+        var click=(bl||isPanne)?"":" onclick='book(\""+jsesc(machine)+"\",\""+fmt(day)+"\",\""+slot+"\")'";
+        var dragAttrs=(bl||isPanne)?"":" ondragover='onSlotDragOver(event,\""+jsesc(key)+"\")' ondragleave='onSlotDragLeave(event)' ondrop='onSlotDrop(event,\""+jsesc(key)+"\")'";
+        if(r && !bl && !isPanne) dragAttrs+=" draggable='true' ondragstart='onSlotDragStart(event,\""+jsesc(key)+"\")' ondragend='onSlotDragEnd()'";
         html+="<td class='day-col' data-col='"+di+"'><div class='slot-cell "+cls+"'"+inlineStyle+click+dragAttrs+">"+adm+content+"</div></td>";
       });
       html+="</tr>";
@@ -1728,6 +1894,7 @@ async function chatRespond(text){
 // ─── DÉMARRAGE ─────────────────────────────────────────────────────────────────
 loadCarouselConfig();
 loadHistory48h();
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(e=>console.log('SW:',e)); }
 loadAll();
 </script>
 <script>

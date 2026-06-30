@@ -1,0 +1,17 @@
+{
+  "name": "Réservation Machines GMP",
+  "short_name": "Réservation GMP",
+  "description": "Planning de réservation des machines - GMP IUT Bordeaux",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f9fc",
+  "theme_color": "#0083ba",
+  "icons": [
+    {
+      "src": "petitgmp.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
