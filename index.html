@@ -102,7 +102,7 @@
   .slot-sub{font-size:.75rem;color:var(--muted);margin-top:2px;line-height:1.3;word-break:break-word;white-space:normal}
   .slot-operateur{font-size:.75rem;color:#4b5563;margin-top:2px;font-weight:600;word-break:break-word}
   .slot-projet{font-size:.73rem;color:var(--muted);margin-top:1px;word-break:break-word;font-style:italic}
-  .slot-disabled-label{font-size:.76rem;color:var(--disabled-border);font-weight:600;margin-top:2px}
+  .slot-disabled-label{font-size:.76rem;color:var(--disabled-border);font-weight:600;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
   .slot-admin-actions{display:none;position:absolute;top:3px;right:3px;gap:3px;flex-wrap:wrap;max-width:54px;justify-content:flex-end}
   .is-admin .slot-admin-actions{display:flex}
   .admin-slot-btn{width:22px;height:22px;border-radius:5px;border:none;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:opacity .15s,transform .1s;opacity:.85;font-weight:700}
@@ -362,7 +362,7 @@
   <div>
     <h1>Réservation des machines</h1>
     <p>Planification hebdomadaire des créneaux</p>
-    <p class="app-version">v1.4.2</p>
+    <p class="app-version">v1.5</p>
   </div>
   <div class="header-qr">
     <img id="headerQr" src="" alt="QR Code">
@@ -434,7 +434,7 @@
 
 <!-- ─── ASSISTANT DISPONIBILITÉS ─── -->
 <button id="chatFab" onclick="toggleChat()" title="Assistant disponibilités" aria-label="Assistant disponibilités">💬</button>
-<div class="app-version-mobile">v1.4.2</div>
+<div class="app-version-mobile">v1.5</div>
 <div id="chatPanel" aria-hidden="true">
   <div class="chat-head">
     <span class="chat-title">🤖 Assistant Atelier GMP</span>
@@ -863,7 +863,7 @@ async function loadDisabled(){
   const {data,error} = await sb.from('disabled_slots').select('*').in('date',dates);
   if(error){ console.error(error); return; }
   disabled = {};
-  if(data) data.forEach(r=>{ disabled[r.machine+'|'+r.date+'|'+r.slot]=true; });
+  if(data) data.forEach(r=>{ disabled[r.machine+'|'+r.date+'|'+r.slot]={reason:r.reason||''}; });
 }
 
 async function loadEtudiants(){
@@ -995,8 +995,8 @@ async function dbUpdateBooking(machine,date,slot,data){
   return true;
 }
 
-async function dbAddDisabled(machine,date,slot){
-  const {error} = await sb.from('disabled_slots').insert({machine,date,slot});
+async function dbAddDisabled(machine,date,slot,reason=''){
+  const {error} = await sb.from('disabled_slots').insert({machine,date,slot,reason});
   if(error && error.code!=='23505'){ showToast('❌ Erreur blocage : '+(error.message||JSON.stringify(error))); return false; }
   return true;
 }
@@ -1079,7 +1079,7 @@ function buildMultiMachineAgendaTable(machineList,days){
         var r=bookings[key],bl=disabled[key];
         var tc=isToday(day)?" today-col":"";
         var cls,content,inlineStyle="";
-        if(bl){ cls="disabled"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>"; }
+        if(bl){ cls="disabled"+tc; var blReason=bl.reason||''; content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 "+(blReason?esc(blReason):'Bloqué')+"</div>"; }
         else if(r){ cls="booked"+tc; inlineStyle=" style='background:"+hexToRgba(color,0.12)+";border-left:3px solid "+color+"!important'";
           content="<div class='slot-time'>"+slot+"</div>"+
             "<div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div>"+
@@ -1547,13 +1547,16 @@ function onOperateurChange(sel){
 }
 
 // ─── BLOCAGE DEMI-JOURNÉE ─────────────────────────────────────────────────────
-async function adminLockHalfDay(machine,date,period){
+function adminLockHalfDay(machine,date,period){
+  showLockReasonModal(null, machine, date, period);
+}
+async function confirmAdminLockHalfDay(machine,date,period,reason){
   var slots=period==="am"?SLOT_AM:SLOT_PM;
   for(const slot of slots){
     var key=machine+"|"+date+"|"+slot;
-    if(!bookings[key]){ await dbAddDisabled(machine,date,slot); disabled[key]=true; }
+    if(!bookings[key]){ await dbAddDisabled(machine,date,slot,reason); disabled[key]={reason}; }
   }
-  render(); showToast("🔒 Demi-journée bloquée");
+  closeModal(); render(); showToast("🔒 Demi-journée bloquée");
 }
 
 // ─── ADMIN ACTIONS ────────────────────────────────────────────────────────────
@@ -1567,11 +1570,36 @@ async function adminDel(key){
   delete bookings[key];
   render(); showToast("🗑 Réservation supprimée");
 }
-async function adminLock(key){
+function adminLock(key){
+  showLockReasonModal(key, null, null, null);
+}
+async function confirmAdminLock(key, reason){
   var parts=key.split("|");
   addHistoryEntry("Blocage créneau", parts[0]+' | '+parts[1]+' | '+parts[2], bookings, disabled);
-  await dbAddDisabled(parts[0],parts[1],parts[2]);
-  disabled[key]=true; render(); showToast("🔒 Créneau bloqué");
+  await dbAddDisabled(parts[0],parts[1],parts[2],reason);
+  disabled[key]={reason}; closeModal(); render(); showToast("🔒 Créneau bloqué");
+}
+
+function showLockReasonModal(key, machine, date, period){
+  var isSingle=!!key;
+  var html="<div class='modal-title'>🔒 "+(isSingle?"Bloquer ce créneau":"Bloquer la demi-journée")+"</div>";
+  html+="<div class='form-group' style='margin-bottom:8px'><label>Raison <span style='color:var(--muted);font-weight:400'>(facultatif)</span></label>";
+  html+="<div style='display:flex;gap:6px;margin-bottom:8px'>";
+  html+="<button class='stats-period-btn' onclick='document.getElementById(\"lockReason\").value=\"TP\"'>TP</button>";
+  html+="<button class='stats-period-btn' onclick='document.getElementById(\"lockReason\").value=\"SAE\"'>SAE</button>";
+  html+="</div>";
+  html+="<input type='text' id='lockReason' placeholder='Ex : TP, SAE, Maintenance…' autocomplete='off'>";
+  html+="</div>";
+  html+="<div class='modal-actions'>";
+  html+="<button class='btn btn-close' onclick='closeModal()'>Annuler</button>";
+  if(isSingle){
+    html+="<button class='btn btn-ok' onclick='confirmAdminLock(\""+jsesc(key)+"\",document.getElementById(\"lockReason\").value.trim())'>🔒 Bloquer</button>";
+  } else {
+    html+="<button class='btn btn-ok' onclick='confirmAdminLockHalfDay(\""+jsesc(machine)+"\",\""+date+"\",\""+period+"\",document.getElementById(\"lockReason\").value.trim())'>🔒 Bloquer</button>";
+  }
+  html+="</div>";
+  openModal(html);
+  setTimeout(()=>{ var el=document.getElementById('lockReason'); if(el) el.focus(); },100);
 }
 async function adminUnlock(key){
   var parts=key.split("|");
