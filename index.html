@@ -1998,7 +1998,8 @@ function render(){
         var isFilterActive=searchTerm||opFilterVal;
         if(bl){
           cls="disabled"+tc;
-          content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 Bloqué</div>";
+          var blReason=bl.reason||'';
+          content="<div class='slot-time'>"+slot+"</div><div class='slot-disabled-label'>🔒 "+(blReason?esc(blReason):'Bloqué')+"</div>";
           if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn unlock' title='Débloquer' onclick='event.stopPropagation();adminUnlock(\""+jsesc(key)+"\")'>✔</button></div>";
           if(isFilterActive) cls+=" slot-dim";
         } else if(r){
