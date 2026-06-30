@@ -519,6 +519,7 @@ async function loadMachines(){
     machineColors = {};
     machineStatus = {};
     machineStatusReason = {};
+    machineStatusDate = {};
     data.forEach(r=>{
       machineColors[r.name]=r.color;
       if(r.status && r.status!=='ok'){ machineStatus[r.name]=r.status; machineStatusReason[r.name]=r.status_reason||''; machineStatusDate[r.name]=r.status_date||fmt(new Date()); }
@@ -541,32 +542,53 @@ function populateOpFilter(){
 }
 
 // ─── ÉTAT MACHINES ─────────────────────────────────────────────────────────────
-async function quickToggleMachineStatus(machine){
-  var cur=machineStatus[machine]||'ok';
-  if(cur==='ok'){
-    var reason=prompt('Raison (optionnel) :')||'';
-    var today=fmt(new Date());
-    await sb.from('machines').update({status:'panne',status_reason:reason,status_date:today}).eq('name',machine);
-    machineStatus[machine]='panne'; machineStatusReason[machine]=reason; machineStatusDate[machine]=today;
-  } else {
-    await sb.from('machines').update({status:'ok',status_reason:'',status_date:null}).eq('name',machine);
-    delete machineStatus[machine]; delete machineStatusReason[machine]; delete machineStatusDate[machine];
-  }
-  render();
-}
 function openMachineStatusManager(){
-  var html="<div class='modal-title'>🔧 État des machines</div>";
-  html+="<table style='width:100%;border-collapse:collapse;font-size:.82rem'><tbody>";
+  var html="<div class='modal-title' style='margin-bottom:8px'>🔧 État des machines</div>";
+  html+="<table style='width:100%;border-collapse:collapse;font-size:.8rem'><tbody>";
   machines.forEach(m=>{
     var st=machineStatus[m]||'ok';
-    var since=machineStatusDate[m]?'<br><em style="font-size:.7rem;color:var(--muted)">depuis le '+machineStatusDate[m]+'</em>':'';
-    var badge=st==='ok'?'<span style="color:var(--free-text);font-weight:600">✔ En service</span>':'<span class="badge-'+st+'">'+st.toUpperCase()+'</span>'+(machineStatusReason[m]?' — <em style="font-size:.75rem;color:var(--muted)">'+esc(machineStatusReason[m])+'</em>':'')+since;
-    var btnLabel=st==='ok'?'🔧 Panne':'✔ En service';
-    html+="<tr style='border-bottom:1px solid var(--border)'><td style='padding:5px 8px;font-weight:600'>"+esc(m)+"</td><td style='padding:5px 8px'>"+badge+"</td><td style='padding:5px 8px;text-align:right'><button class='btn' style='font-size:.75rem;padding:3px 9px;white-space:nowrap' onclick='quickToggleMachineStatus(\""+jsesc(m)+"\");closeModal();openMachineStatusManager()'>"+btnLabel+"</button></td></tr>";
+    var since=machineStatusDate[m]?' <em style="font-size:.68rem;color:var(--muted)">depuis '+machineStatusDate[m]+'</em>':'';
+    var reason=machineStatusReason[m]?' <em style="font-size:.7rem;color:var(--muted)">('+esc(machineStatusReason[m])+')</em>':'';
+    var badge=st==='ok'?'<span style="color:var(--free-text);font-weight:600">✔ En service</span>':'<span class="badge-'+st+'">'+st.toUpperCase()+'</span>'+reason+since;
+    var btn=st==='ok'
+      ?'<button class="btn" style="font-size:.72rem;padding:2px 8px;background:#fee2e2;color:#b91c1c;border-color:#fca5a5" onclick="declarePanne(\''+jsesc(m)+'\')">🔧 Panne</button>'
+      :'<button class="btn" style="font-size:.72rem;padding:2px 8px;background:#f0fdf4;color:#15803d;border-color:#86efac" onclick="remettreEnService(\''+jsesc(m)+'\')">✔ En service</button>';
+    html+="<tr style='border-bottom:1px solid var(--border)'><td style='padding:4px 6px;font-weight:600;white-space:nowrap'>"+esc(m)+"</td><td style='padding:4px 6px'>"+badge+"</td><td style='padding:4px 6px;text-align:right;white-space:nowrap'>"+btn+"</td></tr>";
   });
   html+="</tbody></table>";
   html+="<div class='modal-actions'><button class='btn' onclick='closeModal()'>Fermer</button></div>";
   openModal(html);
+}
+function declarePanne(machine){
+  var html="<div class='modal-title'>🔧 Déclarer en panne</div>";
+  html+="<p style='font-size:.85rem;margin-bottom:12px'>Machine : <strong>"+esc(machine)+"</strong></p>";
+  html+="<div class='form-group'><label class='form-label'>Raison (optionnel)</label><input id='panneReason' class='form-input' type='text' placeholder='Ex. : casse-outil, maintenance...' autocomplete='off'></div>";
+  html+="<div class='modal-actions'>";
+  html+="<button class='btn' onclick='closeModal();openMachineStatusManager()'>Annuler</button>";
+  html+="<button class='btn btn-primary' onclick='confirmPanne(\""+jsesc(machine)+"\")'>Confirmer</button>";
+  html+="</div>";
+  openModal(html);
+  setTimeout(()=>{ var el=document.getElementById('panneReason'); if(el) el.focus(); },100);
+}
+async function confirmPanne(machine){
+  var reason=(document.getElementById('panneReason')||{}).value||'';
+  var today=fmt(new Date());
+  var {error}=await sb.from('machines').update({status:'panne',status_reason:reason,status_date:today}).eq('name',machine);
+  if(error){ showToast('❌ Erreur : '+error.message); return; }
+  machineStatus[machine]='panne'; machineStatusReason[machine]=reason; machineStatusDate[machine]=today;
+  render(); showToast('🔧 '+machine+' déclarée en panne');
+  closeModal(); openMachineStatusManager();
+}
+async function remettreEnService(machine){
+  var {error}=await sb.from('machines').update({status:'ok',status_reason:'',status_date:null}).eq('name',machine);
+  if(error){ showToast('❌ Erreur : '+error.message); return; }
+  delete machineStatus[machine]; delete machineStatusReason[machine]; delete machineStatusDate[machine];
+  render(); showToast('✔ '+machine+' remise en service');
+  closeModal(); openMachineStatusManager();
+}
+async function quickToggleMachineStatus(machine){
+  if(machineStatus[machine]&&machineStatus[machine]!=='ok') await remettreEnService(machine);
+  else declarePanne(machine);
 }
 
 function printPlanning(){
