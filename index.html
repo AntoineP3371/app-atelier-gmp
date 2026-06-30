@@ -343,7 +343,7 @@
   <div>
     <h1>Réservation des machines</h1>
     <p>Planification hebdomadaire des créneaux</p>
-    <p class="app-version">v1.3.3</p>
+    <p class="app-version">v1.3.4</p>
   </div>
   <div class="header-qr">
     <img id="headerQr" src="" alt="QR Code">
@@ -414,7 +414,7 @@
 
 <!-- ─── ASSISTANT DISPONIBILITÉS ─── -->
 <button id="chatFab" onclick="toggleChat()" title="Assistant disponibilités" aria-label="Assistant disponibilités">💬</button>
-<div class="app-version-mobile">v1.3.3</div>
+<div class="app-version-mobile">v1.3.4</div>
 <div id="chatPanel" aria-hidden="true">
   <div class="chat-head">
     <span class="chat-title">🤖 Assistant Atelier GMP</span>
@@ -708,7 +708,13 @@ function showStats(){
   Object.keys(bookings).forEach(k=>{ var s=k.split('|')[2]; if(bySlot[s]!==undefined) bySlot[s]++; });
   var byStudent={};
   Object.values(bookings).forEach(b=>{ var n=(b.nom||'')+' '+(b.prenom||''); n=n.trim(); if(n) byStudent[n]=(byStudent[n]||0)+1; });
-  var top5=Object.entries(byStudent).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  var topStudents=Object.entries(byStudent).sort((a,b)=>b[1]-a[1]);
+  var byProjet={};
+  Object.values(bookings).forEach(b=>{ if(b.projet){ byProjet[b.projet]=(byProjet[b.projet]||0)+1; } });
+  var topProjet=Object.entries(byProjet).sort((a,b)=>b[1]-a[1]);
+  var byOp={};
+  Object.values(bookings).forEach(b=>{ if(b.operateur){ byOp[b.operateur]=(byOp[b.operateur]||0)+1; } });
+  var topOp=Object.entries(byOp).sort((a,b)=>b[1]-a[1]);
   var week=getTwoWeekDays();
   var totalSlots=machines.length*week.length*SLOTS.length;
   var pct=totalSlots>0?Math.round(total/totalSlots*100):0;
@@ -720,26 +726,30 @@ function showStats(){
   html+="<div class='stats-kpi'><div class='stats-kpi-val'>"+pct+"%</div><div class='stats-kpi-label'>taux d'occupation</div></div>";
   html+="<div class='stats-kpi'><div class='stats-kpi-val'>"+machines.length+"</div><div class='stats-kpi-label'>machines</div></div>";
   html+="</div>";
-  html+="<div class='stats-section'><h4>Par machine</h4>";
-  machines.forEach(m=>{ var c=byMachine[m]||0; html+="<div class='stats-bar-row'><span class='stats-bar-label' title='"+esc(m)+"'>"+esc(m)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxM*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
-  html+="</div><div class='stats-section'><h4>Par créneau</h4>";
-  SLOTS.forEach(s=>{ var c=bySlot[s]||0; html+="<div class='stats-bar-row'><span class='stats-bar-label'>"+esc(s)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxS*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
-  html+="</div>";
-  if(top5.length>0){
-    var maxT=top5[0][1];
-    html+="<div class='stats-section'><h4>Top étudiants</h4>";
-    top5.forEach(([n,c])=>{ html+="<div class='stats-bar-row'><span class='stats-bar-label' title='"+esc(n)+"'>"+esc(n)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxT*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
+  if(topProjet.length>0){
+    var maxP=topProjet[0][1];
+    html+="<div class='stats-section'><h4>Par projet</h4>";
+    topProjet.forEach(([n,c])=>{ html+="<div class='stats-bar-row'><span class='stats-bar-label' title='"+esc(n)+"'>"+esc(n)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxP*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
     html+="</div>";
   }
-  var byOp={};
-  Object.values(bookings).forEach(b=>{ if(b.operateur){ byOp[b.operateur]=(byOp[b.operateur]||0)+1; } });
-  var topOp=Object.entries(byOp).sort((a,b)=>b[1]-a[1]);
+  if(topStudents.length>0){
+    var maxT=topStudents[0][1];
+    html+="<div class='stats-section'><h4>Par étudiant</h4>";
+    topStudents.forEach(([n,c])=>{ html+="<div class='stats-bar-row'><span class='stats-bar-label' title='"+esc(n)+"'>"+esc(n)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxT*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
+    html+="</div>";
+  }
+  html+="<div class='stats-section'><h4>Par machine</h4>";
+  machines.forEach(m=>{ var c=byMachine[m]||0; html+="<div class='stats-bar-row'><span class='stats-bar-label' title='"+esc(m)+"'>"+esc(m)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxM*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
+  html+="</div>";
   if(topOp.length>0){
     var maxO=topOp[0][1];
-    html+="<div class='stats-section'><h4>Classement opérateurs</h4>";
+    html+="<div class='stats-section'><h4>Par opérateur</h4>";
     topOp.forEach(([n,c])=>{ html+="<div class='stats-bar-row'><span class='stats-bar-label' title='"+esc(n)+"'>"+esc(n)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxO*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
     html+="</div>";
   }
+  html+="<div class='stats-section'><h4>Par créneau</h4>";
+  SLOTS.forEach(s=>{ var c=bySlot[s]||0; html+="<div class='stats-bar-row'><span class='stats-bar-label'>"+esc(s)+"</span><div class='stats-bar'><div class='stats-bar-fill' style='width:"+Math.round(c/maxS*100)+"%'></div></div><span class='stats-bar-count'>"+c+"</span></div>"; });
+  html+="</div>";
   html+="<div class='modal-actions'><button class='btn' onclick='closeModal()'>Fermer</button></div>";
   openModal(html);
 }
