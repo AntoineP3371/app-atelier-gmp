@@ -29,7 +29,7 @@
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:24px 16px}
   .logo-bar{display:flex;justify-content:center;align-items:center;padding:16px 0 20px}
-  .logo-bar img{max-height:70px;width:auto;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.10))}
+  .logo-bar img{max-height:70px;max-width:100%;width:auto;height:auto;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.10))}
   header{display:flex;align-items:center;gap:14px;margin-bottom:12px}
   .header-qr{margin-left:auto;flex-shrink:0;line-height:0}
   .header-qr img{width:72px;height:72px;display:block}
@@ -48,7 +48,7 @@
   header h1{font-size:1.5rem;font-weight:700;color:var(--text);line-height:1.2}
   header p{font-size:.85rem;color:var(--muted);margin-top:2px}
   .app-version{font-size:.7rem;color:var(--muted);opacity:.6;margin-top:4px}
-  .app-version-mobile{display:none;position:fixed;bottom:8px;left:8px;font-size:.65rem;color:var(--muted);opacity:.5;z-index:10;pointer-events:none}
+  .app-version-mobile{display:none;position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font-size:.65rem;color:var(--muted);opacity:.5;z-index:10;pointer-events:none;white-space:nowrap}
   @media(max-width:640px){.app-version{display:none}.app-version-mobile{display:block}}
   /* Admin banner */
   .admin-banner{display:none;flex-direction:column;gap:8px;background:var(--admin-light);border:1.5px solid var(--admin);border-radius:var(--radius);padding:10px 16px;margin-bottom:14px;color:var(--admin-dark)}
@@ -362,7 +362,7 @@
   <div>
     <h1>Réservation des machines</h1>
     <p>Planification hebdomadaire des créneaux</p>
-    <p class="app-version">v1.5.1</p>
+    <p class="app-version">v1.5.2</p>
   </div>
   <div class="header-qr">
     <img id="headerQr" src="" alt="QR Code">
@@ -434,7 +434,7 @@
 
 <!-- ─── ASSISTANT DISPONIBILITÉS ─── -->
 <button id="chatFab" onclick="toggleChat()" title="Assistant disponibilités" aria-label="Assistant disponibilités">💬</button>
-<div class="app-version-mobile">v1.5.1</div>
+<div class="app-version-mobile">v1.5.2</div>
 <div id="chatPanel" aria-hidden="true">
   <div class="chat-head">
     <span class="chat-title">🤖 Assistant Atelier GMP</span>
@@ -1060,7 +1060,7 @@ function buildFullscreenMachineAgenda(){
       "</div>"+
     "</div>"+
     "<div class='table-wrap'>"+buildMultiMachineAgendaTable(page,days)+"</div>"+
-    "<div style='font-size:.78rem;color:var(--muted);margin-top:10px;text-align:right'>Lecture seule · actualisation automatique toutes les minutes</div>";
+    "<div style='font-size:.78rem;color:var(--muted);margin-top:10px;text-align:right'>Lecture seule · actualisation automatique</div>";
   return html;
 }
 
@@ -2283,8 +2283,47 @@ async function chatRespond(text){
     return "Machines libres aujourd'hui ("+chatFrLong(today)+") :\n"+blocks2.join('\n');
   }
 
-  // E — Aide
-  return "Je peux vous renseigner sur les disponibilités. Essayez par exemple :\n• « Machines libres demain après-midi ? »\n• « Disponibilités de la DIAM850 cette semaine ? »\n• « Prochain créneau libre ? »\n• « L'opérateur Dupont est-il dispo jeudi matin ? »";
+  //  // E — Projet mentionné
+  var projetIntent=/projet|sae\b|tp\b/.test(n);
+  var allProjets=[...new Set(Object.values(bookings).map(function(b){return b.projet;}).filter(Boolean))].sort();
+  var etudProjets=etudiants.length ? [...new Set(etudiants.map(function(e){return e.projet;}).filter(Boolean))].sort() : [];
+  var projetsRef=etudProjets.length ? etudProjets : allProjets;
+  var matchedProjet=projetsRef.find(function(p){ return chatCompact(p).length>=3 && c.indexOf(chatCompact(p))>=0; });
+  if(!matchedProjet && projetIntent && projetsRef.length>0){
+    var bkByP={};
+    Object.values(bookings).forEach(function(b){ if(b.projet){ bkByP[b.projet]=(bkByP[b.projet]||0)+1; } });
+    var lines=projetsRef.map(function(p){ var nb=bkByP[p]||0; return '▸ '+p+(nb?' ('+nb+' réservation'+(nb>1?'s':'')+')':''); });
+    return 'Projets enregistrés :\n'+lines.join('\n');
+  }
+  if(matchedProjet){
+    var etudsDuProjet=etudiants.filter(function(e){return e.projet===matchedProjet;}).map(function(e){return e.nom+' '+e.prenom;});
+    var bksDuProjet=Object.values(bookings).filter(function(b){return b.projet===matchedProjet;});
+    var rep='Projet : '+matchedProjet+'\n';
+    if(etudsDuProjet.length) rep+='Étudiants inscrits : '+etudsDuProjet.join(', ')+'\n';
+    if(bksDuProjet.length){ var machinesUsed=[...new Set(bksDuProjet.map(function(b){return b.machine;}))]; rep+='Réservations en cours : '+bksDuProjet.length+' (machines : '+machinesUsed.join(', ')+')'; }
+    else { rep+='Aucune réservation sur la période affichée.'; }
+    return rep;
+  }
+
+  // F — Étudiant mentionné
+  var matchedEtud=etudiants.find(function(e){
+    var tokens=[chatCompact(e.nom),chatCompact(e.prenom)].filter(function(t){return t.length>=3;});
+    return tokens.some(function(t){return c.indexOf(t)>=0;});
+  });
+  if(!matchedEtud && /etudiant|eleve/.test(n) && etudiants.length>0){
+    return 'Il y a '+etudiants.length+' étudiant(s) dans la liste. Précisez un nom pour plus d\'infos.';
+  }
+  if(matchedEtud){
+    var bksEtud=Object.values(bookings).filter(function(b){
+      return chatCompact(b.nom||'')===chatCompact(matchedEtud.nom) && chatCompact(b.prenom||'')===chatCompact(matchedEtud.prenom);
+    });
+    if(!bksEtud.length) return matchedEtud.prenom+' '+matchedEtud.nom+' ('+matchedEtud.projet+') : aucune réservation sur la période affichée.';
+    var lignes=bksEtud.map(function(b){return '▸ '+b.machine+' — '+b.date+' '+b.slot;});
+    return matchedEtud.prenom+' '+matchedEtud.nom+' ('+matchedEtud.projet+') :\n'+lignes.join('\n');
+  }
+
+  // G — Aide
+  return "Je peux vous renseigner sur les disponibilités, les projets et les étudiants. Essayez par exemple :\n• « Machines libres demain après-midi ? »\n• « Disponibilités de la DIAM850 cette semaine ? »\n• « Prochain créneau libre ? »\n• « Opérateur Dupont dispo jeudi matin ? »\n• « Liste des projets ? »\n• « Réservations du projet SAE ? »\n• « Réservations de Martin Alice ? »";
 }
 
 // ─── DÉMARRAGE ─────────────────────────────────────────────────────────────────
