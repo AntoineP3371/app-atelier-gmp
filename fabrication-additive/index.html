@@ -107,6 +107,14 @@
   .opt-check input,.opt-radio input{width:16px;height:16px;cursor:pointer;accent-color:var(--primary)}
   .finition-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
   .finition-label{font-size:.82rem;color:var(--muted);font-weight:600}
+  .temps-affiche{padding:9px 12px;border:1.5px solid var(--primary);border-radius:7px;background:var(--primary-light);color:var(--primary-dark);font-weight:700;font-size:.95rem}
+  /* Progression par projet */
+  .pbar-wrap{margin:2px 0 14px}
+  .pbar-label{font-size:.82rem;color:var(--muted);font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between;gap:8px}
+  .pbar-label .over-txt{color:var(--danger);font-weight:700}
+  .pbar{height:10px;background:#e6eef3;border-radius:20px;overflow:hidden}
+  .pbar-fill{height:100%;background:var(--primary);border-radius:20px;transition:width .3s}
+  .pbar-fill.over{background:var(--danger)}
   /* Cellule paramètres opérateur */
   .param-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
   .param-tag{font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:5px;background:var(--primary-light);color:var(--primary-dark)}
@@ -149,6 +157,7 @@
   .overlay.open{display:flex}
   .modal{background:var(--surface);border-radius:14px;padding:24px;width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.18);animation:pop .18s ease;max-height:92vh;overflow-y:auto}
   .modal.big{max-width:900px}
+  .modal.wide{max-width:680px}
   @keyframes pop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
   .modal h2{font-size:1.1rem;font-weight:700;margin-bottom:4px}
   .modal .meta{font-size:.82rem;color:var(--muted);margin-bottom:16px}
@@ -238,6 +247,8 @@
         </div>
       </div>
 
+      <div id="projetProgress"></div>
+
       <label style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Fichier STEP <span class="req">*</span></label>
       <div class="dropzone" id="dropzone" onclick="document.getElementById('ffile').click()">
         <div class="dz-icon">📁</div>
@@ -259,9 +270,9 @@
       <div style="margin-top:16px">
         <label style="font-size:.75rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Options de la pièce</label>
         <div class="options-grid">
-          <label class="opt-check"><input type="checkbox" id="ftaraudage"> Taraudage</label>
-          <label class="opt-check"><input type="checkbox" id="finsert"> Insert</label>
-          <label class="opt-check"><input type="checkbox" id="fusinage"> Usinage</label>
+          <label class="opt-check"><input type="checkbox" id="ftaraudage" onchange="updateEstimate()"> Taraudage</label>
+          <label class="opt-check"><input type="checkbox" id="finsert" onchange="updateEstimate()"> Insert</label>
+          <label class="opt-check"><input type="checkbox" id="fusinage" onchange="updateEstimate()"> Usinage</label>
         </div>
         <div class="finition-row">
           <span class="finition-label">Type de pièce :</span>
@@ -273,13 +284,8 @@
       <div class="form-row" style="margin-top:16px;align-items:flex-end">
         <div class="form-group" style="max-width:260px">
           <label>Temps d'impression estimé</label>
-          <select id="ftempscat">
-            <option value="moins de 3h">moins de 3h</option>
-            <option value="moins de 6h">moins de 6h</option>
-            <option value="moins de 12h">moins de 12h</option>
-            <option value="plus de 12h">plus de 12h</option>
-          </select>
-          <span class="hint">Estimé automatiquement d'après le modèle — ajustable.</span>
+          <div id="ftempsAffiche" class="temps-affiche">—</div>
+          <span class="hint">Calculé automatiquement (volume, machine, options).</span>
         </div>
         <div class="form-group">
           <label>Remarque (optionnel)</label>
@@ -319,8 +325,10 @@
   <!-- ============ VUE OPÉRATEUR ============ -->
   <section id="view-operateur" class="view">
     <div class="card">
-      <h2>Tableau des impressions</h2>
-      <div class="sub">Demandes validées à imprimer. Le tableau se met à jour en temps réel.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><h2>Tableau des impressions</h2><div class="sub">Demandes validées à imprimer. Mise à jour en temps réel.</div></div>
+        <button class="btn btn-ghost" onclick="openLimites()">📊 Limites par projet</button>
+      </div>
       <div id="operateurResults"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
     </div>
   </section>
@@ -385,24 +393,39 @@
 
 <!-- ============ MODALE : admin ============ -->
 <div class="overlay" id="ovAdmin">
-  <div class="modal">
+  <div class="modal wide">
     <h2>⚙️ Paramètres</h2>
     <div class="meta">Réglages des machines et des codes d'accès.</div>
-    <div class="form-row"><div class="form-group"><label>Code encadrant (4 chiffres)</label><input type="text" id="pCodeEnc" maxlength="4" inputmode="numeric"></div></div>
-    <div class="form-row"><div class="form-group"><label>Taux de remplissage (0–1)</label><input type="number" id="pTaux" step="0.05" min="0" max="1"></div></div>
+    <div class="form-row">
+      <div class="form-group"><label>Code encadrant (4 chiffres)</label><input type="text" id="pCodeEnc" maxlength="4" inputmode="numeric"></div>
+      <div class="form-group"><label>Limite d'impressions / projet</label><input type="number" id="pLimite" min="1" step="1"></div>
+    </div>
     <div style="font-size:.8rem;font-weight:700;color:var(--muted);margin:12px 0 4px">Opérateurs à notifier par WhatsApp</div>
     <div id="notifOperateurs" class="notif-ops"></div>
     <div class="hint" style="margin-bottom:4px">Seuls les opérateurs cochés <b>et</b> ayant un WhatsApp configuré reçoivent la notification à chaque validation.</div>
     <div style="font-size:.8rem;font-weight:700;color:var(--muted);margin:12px 0 4px">Machines proposées aux étudiants</div>
     <div style="display:flex;gap:6px;font-size:.66rem;color:var(--muted);font-weight:700;padding:0 2px 2px">
-      <span style="width:52px;text-align:center">Icône</span><span style="flex:1">Nom</span><span style="width:96px">Débit mm³/min</span><span style="width:86px">Temps fixe</span><span style="width:30px"></span>
+      <span style="width:52px;text-align:center">Icône</span><span style="flex:1">Nom</span><span style="width:82px">Débit mm³/min</span><span style="width:74px">Temps fixe</span><span style="width:74px">Taux (0-1)</span><span style="width:30px"></span>
     </div>
     <div id="machinesEditor"></div>
     <button class="btn btn-ghost" style="width:100%;margin-top:6px" onclick="addMachineRow()">＋ Ajouter une machine</button>
-    <div class="hint" style="margin-top:6px">Temps estimé ≈ volume × taux ÷ débit + temps fixe.</div>
+    <div class="hint" style="margin-top:6px">Temps estimé ≈ volume × taux ÷ débit + temps fixe, ×1,2 par option (taraudage / insert / usinage).</div>
     <div class="modal-actions">
       <button class="btn btn-close" onclick="closeOverlay('ovAdmin')">Fermer</button>
       <button class="btn btn-admin" onclick="saveAdmin()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODALE : limites par projet (opérateur) ============ -->
+<div class="overlay" id="ovLimites">
+  <div class="modal wide">
+    <h2>📊 Limites d'impression par projet</h2>
+    <div class="meta">Nombre d'impressions déposées et limite autorisée par projet. Augmentez la limite d'un projet si nécessaire.</div>
+    <div id="limitesList"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
+    <div class="modal-actions">
+      <button class="btn btn-close" onclick="closeOverlay('ovLimites')">Fermer</button>
+      <button class="btn btn-ok" onclick="saveLimites()">💾 Enregistrer</button>
     </div>
   </div>
 </div>
@@ -430,7 +453,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // ⚠️ Collez ici l'URL /exec de votre déploiement Google Apps Script :
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9ksxZ4TpFQUaZhXbS2lXSyrPgRzDTaUtyINhLWIMw5dGAFY1X0Dc3aAm9OBjZlv_2sA/exec';
 
-const APP_VERSION = 'v1.1.0';
+const APP_VERSION = 'v1.2.0';
 const MAX_FILE_MB = 50;
 const ADMIN_CODE  = 'admin1234';   // mot de passe admin fixe (non modifiable)
 
@@ -445,15 +468,19 @@ let projets = [];            // liste distincte
 let encadrantsList = [];     // liste distincte des noms d'encadrants
 let PARAMS = {};             // paramètres depuis la table 'parametres'
 let MACHINES = [];           // machines proposées (gérées par l'admin)
-let OPERATEURS_NOTIF = null;  // noms d'opérateurs à notifier (null = tous ceux configurés)
+let OPERATEURS_NOTIF = null; // noms d'opérateurs à notifier (null = tous ceux configurés)
+let LIMITES_PROJETS = {};    // { projet: limite } (surcharge opérateur)
+let currentEstimate = {min:0, cat:'moins de 3h'}; // estimation courante (affichée)
 const DEFAULT_MACHINES = [
-  {nom:'Bambu Lab', emoji:'🟢', debit:300, overhead:10, desc:'FDM rapide — plastique'},
-  {nom:'Markforged', emoji:'🔵', debit:120, overhead:15, desc:'Composite renforcé'}
+  {nom:'Bambu Lab', emoji:'🟢', debit:300, overhead:10, taux:0.35, desc:'FDM rapide — plastique'},
+  {nom:'Markforged', emoji:'🔵', debit:120, overhead:15, taux:0.35, desc:'Composite renforcé'}
 ];
+const LIMITE_PAR_DEFAUT = 10;
 
 let studentViewer = null;    // EmbeddedViewer de la vue étudiant
 let currentModel = { file:null, volume_mm3:0, bbox:'', dims:null };
 let fsViewer = null;
+let demandesById = {};       // cache des demandes affichées (pour le bouton Voir en 3D)
 
 let currentEncadrantNom = '';
 let currentOperateurNom = '';
@@ -499,16 +526,20 @@ async function loadParams(){
   if(!error && data) data.forEach(r=>PARAMS[r.cle]=r.valeur);
   MACHINES = parseMachines();
   OPERATEURS_NOTIF = parseOperateursNotif();
+  LIMITES_PROJETS = parseLimites();
 }
 function parseOperateursNotif(){
   if(PARAMS.operateurs_impression===undefined) return null; // non configuré → tous ceux avec WhatsApp
   try{ const a=JSON.parse(PARAMS.operateurs_impression); if(Array.isArray(a)) return a; }catch(e){}
   return null;
 }
+function parseLimites(){ try{ const o=JSON.parse(PARAMS.limites_projets); if(o&&typeof o==='object') return o; }catch(e){} return {}; }
+function limiteDefaut(){ return Math.round(num(PARAMS.limite_defaut, LIMITE_PAR_DEFAUT)); }
+function projetLimite(projet){ const v=LIMITES_PROJETS[projet]; return v!=null ? Math.round(num(v, limiteDefaut())) : limiteDefaut(); }
 function parseMachines(){
   try{
     const arr=JSON.parse(PARAMS.machines);
-    if(Array.isArray(arr) && arr.length) return arr.map(m=>({nom:m.nom||'Machine', emoji:m.emoji||'⚙️', debit:num(m.debit,200), overhead:num(m.overhead,10), desc:m.desc||''}));
+    if(Array.isArray(arr) && arr.length) return arr.map(m=>({nom:m.nom||'Machine', emoji:m.emoji||'⚙️', debit:num(m.debit,200), overhead:num(m.overhead,10), taux:num(m.taux,0.35), desc:m.desc||''}));
   }catch(e){}
   return DEFAULT_MACHINES.map(m=>({...m}));
 }
@@ -522,7 +553,7 @@ async function loadEtudiants(){
 }
 async function loadOperateurs(){
   const {data,error} = await sb.from('operateurs').select('*').order('name');
-  operateurs = (!error && data) ? data.map(r=>({name:r.name||'',code:(r.code||'').trim(),phone:(r.phone||'').trim(),apikey:(r.apikey||'').trim()})) : [];
+  operateurs = (!error && data) ? data.map(r=>({name:r.name||'',code:(r.code||'').trim(),phone:(r.phone||'').trim(),apikey:(r.apikey||'').trim(),notif_3d:r.notif_3d!==false})) : [];
 }
 function buildStudentLists(){
   const sel=document.getElementById('fprojet');
@@ -535,6 +566,19 @@ function onProjetChange(){
   const sel=document.getElementById('fprojet');
   document.getElementById('fprojet-autre').style.display = sel.value==='__autre__' ? 'block' : 'none';
   buildEtudiantOptions(sel.value);
+  updateProjetProgress();
+}
+async function updateProjetProgress(){
+  const projet=getProjetValue();
+  const box=document.getElementById('projetProgress');
+  if(!projet || projet==='__autre__'){ box.innerHTML=''; return; }
+  const {count}=await sb.from('demandes').select('id',{count:'exact',head:true}).eq('projet',projet);
+  const n=count||0, lim=projetLimite(projet);
+  const pct=Math.min(100, lim>0?Math.round(n/lim*100):0);
+  const over=n>=lim;
+  box.innerHTML="<div class='pbar-wrap'><div class='pbar-label'><span>Impressions du projet «&nbsp;"+esc(projet)+"&nbsp;»</span>"+
+    "<span"+(over?" class='over-txt'":"")+">"+n+" / "+lim+(over?" — limite atteinte":"")+"</span></div>"+
+    "<div class='pbar'><div class='pbar-fill"+(over?' over':'')+"' style='width:"+pct+"%'></div></div></div>";
 }
 function buildEtudiantOptions(projet){
   const esel=document.getElementById('fetudiant');
@@ -620,16 +664,31 @@ function buildMachines(){
 }
 function machineByNom(nom){ return MACHINES.find(m=>m.nom===nom); }
 function selectedMachine(){ const el=document.querySelector('input[name=machine]:checked'); return el?el.value:(MACHINES[0]?MACHINES[0].nom:''); }
+function currentOpts(){ return {
+  taraudage:document.getElementById('ftaraudage').checked,
+  insert:document.getElementById('finsert').checked,
+  usinage:document.getElementById('fusinage').checked
+}; }
 function onMachineChange(){
   document.querySelectorAll('.machine-opt').forEach(o=>o.classList.toggle('sel', o.dataset.m===selectedMachine()));
-  const t=estimateTime(currentModel.volume_mm3, selectedMachine());
-  if(t>0) document.getElementById('ftempscat').value=tempsCategorie(t);
+  updateEstimate();
 }
-function estimateTime(volume_mm3, machineNom){
+function updateEstimate(){
+  const min=estimateTime(currentModel.volume_mm3, selectedMachine(), currentOpts());
+  currentEstimate={min, cat:tempsCategorie(min)};
+  document.getElementById('ftempsAffiche').textContent = min>0 ? currentEstimate.cat : '—';
+}
+// Estimation : volume × taux(machine) ÷ débit(machine) + overhead, × 1.2 par option (taraudage/insert/usinage)
+function estimateTime(volume_mm3, machineNom, opts){
   if(!volume_mm3 || volume_mm3<=0) return 0;
-  const m=machineByNom(machineNom)||MACHINES[0]||{debit:300,overhead:10};
-  const taux=num(PARAMS.taux_remplissage,0.35);
-  return Math.max(1, Math.round(volume_mm3*taux/num(m.debit,300) + num(m.overhead,10)));
+  const m=machineByNom(machineNom)||MACHINES[0]||{debit:300,overhead:10,taux:0.35};
+  const taux=num(m.taux,0.35);
+  let t = volume_mm3*taux/num(m.debit,300) + num(m.overhead,10);
+  opts=opts||{};
+  if(opts.taraudage) t*=1.2;
+  if(opts.usinage)   t*=1.2;
+  if(opts.insert)    t*=1.2;
+  return Math.max(1, Math.round(t));
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -659,11 +718,14 @@ async function submitDemande(){
   try{
     busy(true,'Préparation…');
     const machine=selectedMachine();
-    const estMin=estimateTime(currentModel.volume_mm3, machine);
-    const tempsCat=document.getElementById('ftempscat').value;
-    // Numéro incrémental par projet (TRUC_1, TRUC_2, …) — invisible pour l'étudiant
+    updateEstimate();
+    const estMin=currentEstimate.min;
+    const tempsCat=currentEstimate.cat;
+    // Numéro incrémental par projet + contrôle de la limite
     const {count}=await sb.from('demandes').select('id',{count:'exact',head:true}).eq('projet',projet);
-    const numero=(count||0)+1;
+    const nb=count||0, lim=projetLimite(projet);
+    if(nb>=lim){ busy(false); showToast('⛔ Limite de '+lim+' impressions atteinte pour ce projet — demandez à un opérateur de l\'augmenter.'); return; }
+    const numero=nb+1;
     const ext=(currentModel.file.name.split('.').pop()||'step').toLowerCase();
     const nomFichier=slugProjet(projet)+'_'+numero+'.'+ext;
     const renamed=new File([currentModel.file], nomFichier, {type:currentModel.file.type});
@@ -690,11 +752,12 @@ async function submitDemande(){
 function resetStudentForm(){
   ['fnom','fprenom','fnotes','fprojet-autre'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('fprojet').value=''; onProjetChange();
-  document.getElementById('ftempscat').value='moins de 3h';
   document.getElementById('ftaraudage').checked=false;
   document.getElementById('finsert').checked=false;
   document.getElementById('fusinage').checked=false;
   const bro=document.querySelector('input[name=finition][value=brouillon]'); if(bro)bro.checked=true;
+  document.getElementById('ftempsAffiche').textContent='—';
+  currentEstimate={min:0,cat:'moins de 3h'};
   document.getElementById('fileTagWrap').innerHTML='';
   document.getElementById('metrics').innerHTML='';
   currentModel={file:null,volume_mm3:0,bbox:'',dims:null};
@@ -711,6 +774,7 @@ function base64ToFile(b64,name,mime){
   for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
   return new File([bytes],name,{type:mime||'application/octet-stream'});
 }
+function voir3D(id){ const d=demandesById[id]; if(d) openFsViewer(d.drive_file_id, d.fichier_nom, d.projet); }
 async function openFsViewer(driveId, fichierNom, meta){
   document.getElementById('fsTitle').textContent=fichierNom||'Visualisation 3D';
   document.getElementById('fsMeta').textContent=meta||'';
@@ -798,6 +862,7 @@ async function loadEncadrant(){
   const {data,error}=await sb.from('demandes').select('*').eq('statut','en_attente').order('created_at');
   if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
   if(!data.length){ box.innerHTML="<div class='empty'>Aucune demande en attente 🎉</div>"; return; }
+  data.forEach(d=>demandesById[d.id]=d);
   box.innerHTML=data.map(d=>demandeCardEncadrant(d)).join('');
 }
 function demandeCardEncadrant(d){
@@ -810,7 +875,7 @@ function demandeCardEncadrant(d){
     "<div>"+badge(d.statut)+"</div></div>"+
     "<textarea id='enccom-"+d.id+"' class='enc-comment' rows='2' placeholder='Commentaire opérateur (optionnel)…'></textarea>"+
     "<div class='dc-actions'>"+
-    "<button class='btn btn-ghost' onclick=\"openFsViewer('"+d.drive_file_id+"',"+JSON.stringify(d.fichier_nom)+","+JSON.stringify(d.projet)+")\">👁️ Voir en 3D</button>"+
+    "<button class='btn btn-ghost' onclick='voir3D("+d.id+")'>👁️ Voir en 3D</button>"+
     "<button class='btn btn-green' onclick='validerDemande("+d.id+",true)'>✔️ Valider</button>"+
     "<button class='btn btn-danger' onclick='validerDemande("+d.id+",false)'>✖️ Refuser</button>"+
     "</div></div>";
@@ -850,8 +915,9 @@ async function loadOperateur(){
   const {data,error}=await sb.from('demandes').select('*').in('statut',['validee','en_cours','imprimee']).order('created_at',{ascending:false});
   if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
   if(!data.length){ box.innerHTML="<div class='empty'>Aucune impression à traiter pour le moment.</div>"; return; }
+  data.forEach(d=>demandesById[d.id]=d);
   let rows=data.map(d=>{
-    let act="<button class='btn btn-ghost' onclick=\"openFsViewer('"+d.drive_file_id+"',"+JSON.stringify(d.fichier_nom)+","+JSON.stringify(d.projet)+")\">👁️ 3D</button>";
+    let act="<button class='btn btn-ghost' onclick='voir3D("+d.id+")'>👁️ 3D</button>";
     if(d.statut==='validee') act+="<button class='btn btn-amber' onclick='majStatut("+d.id+",\"en_cours\")'>▶️ Lancer</button>";
     if(d.statut==='validee'||d.statut==='en_cours') act+="<button class='btn btn-green' onclick='majStatut("+d.id+",\"imprimee\")'>✅ Terminée</button>";
     const opts=paramTags(d);
@@ -880,6 +946,31 @@ async function majStatut(id, statut){
   if(error){ showToast('❌ '+error.message); return; }
   showToast(statut==='imprimee'?'✅ Marquée terminée':'▶️ Impression lancée');
   loadOperateur();
+}
+async function openLimites(){
+  openOverlay('ovLimites');
+  const box=document.getElementById('limitesList');
+  box.innerHTML="<div class='loading'><span class='spinner'></span> Chargement…</div>";
+  const {data,error}=await sb.from('demandes').select('projet');
+  if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
+  const counts={}; (data||[]).forEach(r=>{ if(r.projet) counts[r.projet]=(counts[r.projet]||0)+1; });
+  const projs=Object.keys(counts).sort((a,b)=>a.localeCompare(b));
+  if(!projs.length){ box.innerHTML="<div class='empty'>Aucune demande pour le moment. Limite par défaut : "+limiteDefaut()+".</div>"; return; }
+  box.innerHTML="<div class='table-wrap'><table><thead><tr><th>Projet</th><th>Impressions</th><th>Limite</th></tr></thead><tbody>"+
+    projs.map(p=>{ const n=counts[p], lim=projetLimite(p), over=n>=lim;
+      return "<tr><td>"+esc(p)+"</td><td>"+(over?"<b style='color:var(--danger)'>"+n+"</b>":n)+
+      "</td><td><input type='number' min='1' step='1' class='lim-input' data-projet=\""+esc(p)+"\" value='"+lim+"' style='width:82px;padding:6px 9px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit'></td></tr>";
+    }).join('')+"</tbody></table></div>";
+}
+async function saveLimites(){
+  const map={...LIMITES_PROJETS};
+  document.querySelectorAll('#limitesList .lim-input').forEach(inp=>{ map[inp.dataset.projet]=Math.max(1,Math.round(num(inp.value,limiteDefaut()))); });
+  busy(true,'Enregistrement…');
+  const {error}=await sb.from('parametres').upsert([{cle:'limites_projets', valeur:JSON.stringify(map)}]);
+  busy(false);
+  if(error){ showToast('❌ '+error.message); return; }
+  await loadParams(); updateProjetProgress();
+  closeOverlay('ovLimites'); showToast('✅ Limites enregistrées');
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -923,7 +1014,7 @@ async function rechercherSuivi(){
 // ─────────────────────────────────────────────────────────────────────────
 function openAdmin(){
   document.getElementById('pCodeEnc').value=PARAMS.code_encadrant||'0000';
-  document.getElementById('pTaux').value=PARAMS.taux_remplissage||'0.35';
+  document.getElementById('pLimite').value=limiteDefaut();
   renderNotifOperateurs();
   document.getElementById('machinesEditor').innerHTML='';
   MACHINES.forEach(m=>addMachineRow(m));
@@ -931,7 +1022,7 @@ function openAdmin(){
 }
 function renderNotifOperateurs(){
   const box=document.getElementById('notifOperateurs');
-  if(!operateurs.length){ box.innerHTML="<div style='font-size:.82rem;color:var(--muted)'>Aucun opérateur (gérés depuis la page d'accueil).</div>"; return; }
+  if(!operateurs.length){ box.innerHTML="<div style='font-size:.82rem;color:var(--muted)'>Aucun opérateur (à gérer depuis la page d'accueil).</div>"; return; }
   box.innerHTML=operateurs.map(o=>{
     const has=!!(o.phone&&o.apikey);
     const checked=(OPERATEURS_NOTIF===null ? has : OPERATEURS_NOTIF.includes(o.name));
@@ -940,14 +1031,15 @@ function renderNotifOperateurs(){
   }).join('');
 }
 function addMachineRow(m){
-  m=m||{emoji:'⚙️',nom:'',debit:200,overhead:10};
+  m=m||{emoji:'⚙️',nom:'',debit:200,overhead:10,taux:0.35};
   const div=document.createElement('div');
   div.className='mrow'; div.style.cssText='display:flex;gap:6px;margin-bottom:6px;align-items:center';
   div.innerHTML=
     "<input class='m-emoji' style='width:52px;text-align:center' maxlength='4' value='"+esc(m.emoji||'⚙️')+"'>"+
     "<input class='m-nom' style='flex:1' placeholder='Nom de la machine' value='"+esc(m.nom||'')+"'>"+
-    "<input class='m-debit' type='number' min='1' style='width:96px' value='"+num(m.debit,200)+"'>"+
-    "<input class='m-over' type='number' min='0' style='width:86px' value='"+num(m.overhead,10)+"'>"+
+    "<input class='m-debit' type='number' min='1' style='width:82px' value='"+num(m.debit,200)+"'>"+
+    "<input class='m-over' type='number' min='0' style='width:74px' value='"+num(m.overhead,10)+"'>"+
+    "<input class='m-taux' type='number' min='0' max='1' step='0.05' style='width:74px' value='"+num(m.taux,0.35)+"'>"+
     "<button class='btn btn-danger' style='width:30px;padding:6px;justify-content:center' onclick='this.closest(\".mrow\").remove()'>✕</button>";
   document.getElementById('machinesEditor').appendChild(div);
 }
@@ -956,7 +1048,7 @@ function collectMachines(){
   document.querySelectorAll('#machinesEditor .mrow').forEach(r=>{
     const nom=r.querySelector('.m-nom').value.trim();
     if(!nom) return;
-    arr.push({ nom, emoji:r.querySelector('.m-emoji').value.trim()||'⚙️', debit:num(r.querySelector('.m-debit').value,200), overhead:num(r.querySelector('.m-over').value,10) });
+    arr.push({ nom, emoji:r.querySelector('.m-emoji').value.trim()||'⚙️', debit:num(r.querySelector('.m-debit').value,200), overhead:num(r.querySelector('.m-over').value,10), taux:num(r.querySelector('.m-taux').value,0.35) });
   });
   return arr;
 }
@@ -966,7 +1058,7 @@ async function saveAdmin(){
   const notifNoms=[...document.querySelectorAll('#notifOperateurs .notif-cb:checked')].map(c=>c.value);
   const rows=[
     {cle:'code_encadrant',        valeur:document.getElementById('pCodeEnc').value.trim()||'0000'},
-    {cle:'taux_remplissage',      valeur:String(num(document.getElementById('pTaux').value,0.35))},
+    {cle:'limite_defaut',         valeur:String(Math.max(1, Math.round(num(document.getElementById('pLimite').value, LIMITE_PAR_DEFAUT))))},
     {cle:'machines',              valeur:JSON.stringify(machines)},
     {cle:'operateurs_impression', valeur:JSON.stringify(notifNoms)}
   ];
@@ -974,7 +1066,7 @@ async function saveAdmin(){
   const {error}=await sb.from('parametres').upsert(rows);
   busy(false);
   if(error){ showToast('❌ '+error.message); return; }
-  await loadParams(); buildMachines(); onMachineChange();
+  await loadParams(); buildMachines(); onMachineChange(); updateProjetProgress();
   closeOverlay('ovAdmin'); showToast('💾 Paramètres enregistrés');
 }
 

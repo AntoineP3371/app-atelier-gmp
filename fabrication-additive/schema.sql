@@ -2,7 +2,7 @@
 --  Impression 3D — schéma à coller dans le SQL Editor de Supabase
 --  (MÊME projet que reservation-machines : ggmlfbxppgeivfvlxxrj)
 --
---  Ce script n'AJOUTE que deux tables (demandes, parametres).
+--  Ce script AJOUTE deux tables (demandes, parametres).
 --  Il NE touche PAS aux tables existantes etudiants / operateurs.
 --  On peut le relancer sans risque (IF NOT EXISTS partout).
 -- =====================================================================
@@ -58,10 +58,11 @@ create table if not exists public.parametres (
 
 -- Valeurs par défaut (ne réécrase pas si déjà présentes)
 insert into public.parametres (cle, valeur) values
-  ('code_encadrant',   '0000'),   -- code partagé de validation encadrant
-  ('taux_remplissage', '0.35'),   -- fraction de matière effective (0-1)
-  -- Liste des machines proposées (gérée depuis l'écran admin) :
-  ('machines', '[{"nom":"Bambu Lab","emoji":"🟢","debit":300,"overhead":10,"desc":"FDM rapide — plastique"},{"nom":"Markforged","emoji":"🔵","debit":120,"overhead":15,"desc":"Composite renforcé"}]')
+  ('code_encadrant', '0000'),   -- code partagé de validation encadrant
+  ('limite_defaut',  '10'),     -- limite d'impressions par projet (par défaut)
+  ('limites_projets','{}'),     -- surcharges par projet (gérées par l'opérateur)
+  -- Machines proposées (gérées en admin) : débit mm³/min, temps fixe min, taux de remplissage 0-1
+  ('machines', '[{"nom":"Bambu Lab","emoji":"🟢","debit":300,"overhead":10,"taux":0.35,"desc":"FDM rapide — plastique"},{"nom":"Markforged","emoji":"🔵","debit":120,"overhead":15,"taux":0.35,"desc":"Composite renforcé"}]')
 on conflict (cle) do nothing;
 
 -- ---------- Sécurité (RLS) : accès anon, comme le reste de l'appli ---

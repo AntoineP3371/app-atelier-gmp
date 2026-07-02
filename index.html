@@ -7,12 +7,16 @@
 <meta name="theme-color" content="#0083ba">
 <link rel="icon" type="image/png" href="usinage/favicon-64.png">
 <link rel="apple-touch-icon" href="usinage/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#f3f9fc; --surface:#fff; --border:#d6e6ef;
     --primary:#0083ba; --primary-light:#e2f4fc; --primary-dark:#00688f;
     --text:#13303d; --muted:#5b7686;
     --additive:#7c3aed; --additive-light:#f1ecfe; --additive-dark:#5b21b6;
+    --danger:#ef4444; --danger-light:#fee2e2;
+    --admin:#7c3aed; --admin-dark:#5b21b6; --green:#16a34a;
     --radius:16px; --shadow:0 6px 26px rgba(0,40,60,.12);
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -50,6 +54,48 @@
   .admin-bar-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
   .admin-link{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:.85rem;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;transition:border-color .15s,background .15s}
   .admin-link:hover{border-color:var(--primary);background:var(--primary-light)}
+  /* ── Gestionnaires du portail ── */
+  .pv-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:200;align-items:center;justify-content:center;padding:16px}
+  .pv-overlay.open{display:flex}
+  .pv-modal{background:var(--surface);border-radius:14px;padding:24px;width:100%;max-width:720px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25);text-align:left}
+  .pv-modal h2{font-size:1.15rem;font-weight:800;margin-bottom:4px}
+  .pv-meta{font-size:.85rem;color:var(--muted);margin-bottom:14px;line-height:1.5}
+  .pv-info{background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:12px 14px;margin:10px 0;font-size:.82rem;color:#166534;line-height:1.6}
+  .pv-err{font-size:.82rem;color:var(--danger);margin-top:6px;display:none}
+  .pv-err.show{display:block}
+  .pv-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+  .pv-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit}
+  .pv-btn:hover{background:var(--primary-light)}
+  .pv-btn.ok{background:var(--admin);color:#fff;border:none}
+  .pv-btn.ok:hover{background:var(--admin-dark)}
+  .pv-btn.del{background:var(--danger-light);color:var(--danger);border:1px solid #fca5a5}
+  .pv-btn.del:hover{background:var(--danger);color:#fff}
+  .pv-input{width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:.95rem;font-family:inherit;color:var(--text);background:#fff;outline:none}
+  .pv-input:focus{border-color:var(--admin)}
+  .op-row{border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;flex-direction:column;gap:7px;background:#fafcfe}
+  .op-row .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .op-row input{border:1.5px solid var(--border);border-radius:6px;padding:6px 9px;font-size:.85rem;font-family:inherit;color:var(--text);background:#fff;outline:none}
+  .op-row input:focus{border-color:var(--admin)}
+  .op-row .op-name{flex:1;min-width:140px;font-weight:600}
+  .op-row .op-phone,.op-row .op-key{flex:1;min-width:120px}
+  .op-row .op-code{width:96px;font-family:monospace;letter-spacing:2px}
+  .op-x{width:30px;height:30px;border-radius:6px;border:none;background:var(--danger-light);color:var(--danger);cursor:pointer;font-weight:700;flex-shrink:0}
+  .op-x:hover{background:var(--danger);color:#fff}
+  .op-test{background:#25D366;color:#fff;border:none;border-radius:6px;padding:6px 11px;font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap}
+  .op-notif{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--text);cursor:pointer;font-weight:600}
+  .op-notif input{width:16px;height:16px;accent-color:var(--additive)}
+  .pv-add{width:100%;padding:9px;border:1.5px dashed var(--admin);border-radius:8px;background:transparent;color:var(--admin);font-weight:600;cursor:pointer;font-family:inherit;margin-top:2px}
+  .pv-add:hover{background:var(--additive-light)}
+  .pv-count{font-size:.85rem;color:var(--muted);margin-bottom:8px}
+  .pv-tablewrap{max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:8px}
+  .pv-table{width:100%;border-collapse:collapse;font-size:.82rem}
+  .pv-table th{background:#eef6fb;text-align:left;padding:6px 8px;color:var(--muted);position:sticky;top:0}
+  .pv-table td{padding:5px 8px;border-bottom:1px solid #eef3f6}
+  .pv-drop{border:2px dashed var(--border);border-radius:10px;padding:22px;text-align:center;cursor:pointer;color:var(--muted);background:#fafcfe;margin:6px 0}
+  .pv-drop:hover,.pv-drop.drag{border-color:var(--admin);background:var(--additive-light);color:var(--admin-dark)}
+  .pv-warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:8px;padding:9px 12px;font-size:.8rem;margin:10px 0}
+  .pv-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:11px 20px;border-radius:8px;font-size:.88rem;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;text-align:center}
+  .pv-toast.show{opacity:1}
   footer{margin-top:28px;font-size:.78rem;color:var(--muted);opacity:.8;text-align:center}
   @media(max-width:640px){.brand h1{font-size:1.4rem}.cards{gap:16px}}
 </style>
@@ -111,20 +157,179 @@
 
   <div class="admin-bar">
     <span class="admin-bar-label">Administration</span>
-    <button class="admin-link" onclick="goManage('operateurs')">👥 Gérer les opérateurs</button>
-    <button class="admin-link" onclick="goManage('etudiants')">👨‍🎓 Étudiants / Projets</button>
+    <button class="admin-link" onclick="portalAuth('operateurs')">👥 Gérer les opérateurs</button>
+    <button class="admin-link" onclick="portalAuth('etudiants')">👨‍🎓 Étudiants / Projets</button>
   </div>
 
   <footer>Atelier GMP — IUT Bordeaux</footer>
 
-  <script>
-    // Accès aux gestionnaires (opérateurs, étudiants/projets) hébergés dans l'appli Usinage.
-    // On mémorise l'écran voulu (sessionStorage, partagé même origine) puis on ouvre Usinage,
-    // qui demandera le mot de passe admin avant d'afficher le gestionnaire.
-    function goManage(which){
-      try{ sessionStorage.setItem('pendingModal', which); }catch(e){}
-      window.location.href='usinage/';
-    }
-  </script>
+<div class="pv-overlay" id="pvOverlay"><div class="pv-modal" id="pvModal"></div></div>
+<div class="pv-toast" id="pvToast"></div>
+
+<script>
+// ── Gestion unifiée (opérateurs + étudiants) directement dans le portail ──
+const SUPABASE_URL  = 'https://ggmlfbxppgeivfvlxxrj.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdnbWxmYnhwcGdlaXZmdmx4eHJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNDY5NTIsImV4cCI6MjA5NzkyMjk1Mn0.HvPE2ewB8gFgVzj-xAb1YBxFfn8hTEwOwQLDfF1vgT0';
+const ADMIN_PW = 'admin1234';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pvToast(m){ const t=document.getElementById('pvToast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),3000); }
+function pvOpen(html){ document.getElementById('pvModal').innerHTML=html; document.getElementById('pvOverlay').classList.add('open'); }
+function pvClose(){ document.getElementById('pvOverlay').classList.remove('open'); }
+
+// ── Accès protégé par mot de passe ──
+let _pvPending=null;
+function portalAuth(which){
+  if(sessionStorage.getItem('portalAdmin')==='1'){ openManager(which); return; }
+  _pvPending=which;
+  pvOpen(
+    "<h2>🔐 Administration</h2>"+
+    "<div class='pv-meta'>Entrez le mot de passe administrateur.</div>"+
+    "<input type='password' class='pv-input' id='pvPw' placeholder='mot de passe' onkeydown=\"if(event.key==='Enter')pvCheckPw()\">"+
+    "<div class='pv-err' id='pvPwErr'>Mot de passe incorrect.</div>"+
+    "<div class='pv-actions'><button class='pv-btn' onclick='pvClose()'>Annuler</button><button class='pv-btn ok' onclick='pvCheckPw()'>Se connecter</button></div>"
+  );
+  setTimeout(()=>{ const i=document.getElementById('pvPw'); if(i)i.focus(); },50);
+}
+function pvCheckPw(){
+  if(document.getElementById('pvPw').value===ADMIN_PW){ sessionStorage.setItem('portalAdmin','1'); openManager(_pvPending); }
+  else document.getElementById('pvPwErr').classList.add('show');
+}
+function openManager(which){ if(which==='operateurs') openOperateurs(); else openEtudiants(); }
+
+// ══════════════ OPÉRATEURS ══════════════
+async function openOperateurs(){
+  pvOpen("<h2>👥 Gérer les opérateurs</h2><div class='pv-meta'>Chargement…</div>");
+  const {data,error}=await sb.from('operateurs').select('*').order('name');
+  const ops = (!error&&data)?data:[];
+  let rows=ops.map(o=>opRow(o.name||'',o.phone||'',o.apikey||'',o.code||'')).join('');
+  pvOpen(
+    "<h2>👥 Gérer les opérateurs</h2>"+
+    "<div class='pv-meta'>Nom, WhatsApp (CallMeBot) et code de validation à 4 chiffres. Liste commune à Réservation Machines et Impression 3D.</div>"+
+    "<div class='pv-info'><strong>📲 Clé API CallMeBot</strong> — depuis le téléphone de l'opérateur :<br>"+
+      "1. Enregistrer le contact <strong>+34 613 01 49 37</strong><br>"+
+      "2. Lui envoyer : <code>I allow callmebot to send me messages</code><br>"+
+      "3. Copier la clé API renvoyée</div>"+
+    "<div id='opList'>"+rows+"</div>"+
+    "<button class='pv-add' onclick='addOpRow()'>+ Ajouter un opérateur</button>"+
+    "<div class='pv-actions'><button class='pv-btn' onclick='pvClose()'>Annuler</button><button class='pv-btn ok' onclick='saveOperateurs()'>✔ Enregistrer</button></div>"
+  );
+}
+function opRow(name,phone,apikey,code){
+  return "<div class='op-row'>"+
+    "<div class='r'><input class='op-name' value=\""+esc(name)+"\" placeholder=\"Nom de l'opérateur\"><button class='op-x' onclick=\"this.closest('.op-row').remove()\">✕</button></div>"+
+    "<div class='r'><input class='op-phone' value=\""+esc(phone)+"\" placeholder='📱 +336… (WhatsApp)'><input class='op-key' value=\""+esc(apikey)+"\" placeholder='Clé API CallMeBot'><button class='op-test' onclick='pvTestWhatsapp(this)'>▶ Test</button></div>"+
+    "<div class='r'><label style='font-size:.8rem;color:var(--muted);white-space:nowrap'>Code validation :</label><input class='op-code' value=\""+esc(code)+"\" maxlength='4' inputmode='numeric' placeholder='4 chiffres'></div>"+
+  "</div>";
+}
+function addOpRow(){ document.getElementById('opList').insertAdjacentHTML('beforeend', opRow('','','','')); }
+async function pvTestWhatsapp(btn){
+  const row=btn.closest('.op-row');
+  const phone=row.querySelector('.op-phone').value.trim();
+  const apikey=row.querySelector('.op-key').value.trim();
+  const name=row.querySelector('.op-name').value.trim()||"l'opérateur";
+  if(!phone||!apikey){ pvToast('⚠️ Numéro et clé API requis'); return; }
+  pvToast('📤 Envoi du test…');
+  const msg="✅ Test OK — notifications WhatsApp configurées pour "+name+".";
+  try{ await fetch("https://api.callmebot.com/whatsapp.php?phone="+encodeURIComponent(phone)+"&text="+encodeURIComponent(msg)+"&apikey="+encodeURIComponent(apikey),{mode:'no-cors'}); pvToast('✅ Message test envoyé à '+phone); }
+  catch(e){ pvToast('❌ Erreur lors de l\'envoi'); }
+}
+async function saveOperateurs(){
+  const arr=[];
+  document.querySelectorAll('#opList .op-row').forEach(r=>{
+    const name=r.querySelector('.op-name').value.trim(); if(!name) return;
+    arr.push({ name, phone:r.querySelector('.op-phone').value.trim(), apikey:r.querySelector('.op-key').value.trim(), code:r.querySelector('.op-code').value.trim() });
+  });
+  if(!arr.length){ pvToast('⚠️ Ajoutez au moins un opérateur'); return; }
+  pvToast('💾 Enregistrement…');
+  const {error:delErr}=await sb.from('operateurs').delete().neq('name','__never__');
+  if(delErr){ pvToast('❌ '+delErr.message); return; }
+  if(arr.length){ const {error:insErr}=await sb.from('operateurs').insert(arr); if(insErr){ pvToast('❌ '+insErr.message); return; } }
+  pvClose(); pvToast('✅ Opérateurs enregistrés');
+}
+
+// ══════════════ ÉTUDIANTS / PROJETS ══════════════
+let _etudPending=null;
+async function openEtudiants(){
+  pvOpen("<h2>👨‍🎓 Étudiants / Projets</h2><div class='pv-meta'>Chargement…</div>");
+  const {data,error}=await sb.from('etudiants').select('*').order('projet').order('nom');
+  const et=(!error&&data)?data:[];
+  const projets=[...new Set(et.map(e=>e.projet).filter(Boolean))];
+  let list;
+  if(!et.length){ list="<div class='pv-count'>Aucun étudiant importé.</div>"; }
+  else{
+    list="<div class='pv-count'>"+et.length+" étudiant(s) — "+projets.length+" projet(s)</div>"+
+      "<div class='pv-tablewrap'><table class='pv-table'><thead><tr><th>Nom</th><th>Prénom</th><th>Projet</th></tr></thead><tbody>"+
+      et.map(e=>"<tr><td>"+esc(e.nom)+"</td><td>"+esc(e.prenom)+"</td><td>"+esc(e.projet)+"</td></tr>").join('')+
+      "</tbody></table></div>";
+  }
+  pvOpen(
+    "<h2>👨‍🎓 Étudiants / Projets</h2>"+
+    "<div class='pv-meta'>Liste commune à Réservation Machines et Impression 3D.</div>"+
+    list+
+    "<div style='font-weight:700;font-size:.85rem;margin:12px 0 4px'>Importer une liste (.xlsx)</div>"+
+    "<div class='pv-drop' id='etudDrop' onclick=\"document.getElementById('etudFile').click()\">📂 Cliquez ou glissez un fichier .xlsx ici</div>"+
+    "<input type='file' id='etudFile' accept='.xlsx,.xls' style='display:none' onchange='pvParseEtud(this.files[0])'>"+
+    "<div style='display:flex;gap:8px;flex-wrap:wrap'><button class='pv-btn' onclick='pvTemplate()'>⬇ Télécharger le modèle</button>"+
+    (et.length?"<button class='pv-btn del' onclick='pvClearEtud()'>🗑 Vider la liste</button>":"")+"</div>"+
+    "<div class='pv-actions'><button class='pv-btn' onclick='pvClose()'>Fermer</button></div>"
+  );
+  const dz=document.getElementById('etudDrop');
+  ['dragover','dragenter'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag');}));
+  dz.addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) pvParseEtud(e.dataTransfer.files[0]); });
+}
+function pvTemplate(){
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([["Nom","Prenom","Projet","Encadrant1","Encadrant2"],["MARTIN","Alice","Projet A","Dubois Jean","Leroi Marie"],["DUPONT","Bob","Projet A","Dubois Jean",""]]);
+  ws['!cols']=[{wch:18},{wch:18},{wch:25},{wch:20},{wch:20}];
+  XLSX.utils.book_append_sheet(wb,ws,"Etudiants");
+  XLSX.writeFile(wb,"modele_etudiants.xlsx");
+}
+function pvParseEtud(file){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+    if(rows.length<2){ pvToast('❌ Fichier vide ou invalide'); return; }
+    const h=rows[0].map(x=>(x+'').trim().toLowerCase());
+    const iN=h.indexOf('nom'),iP=h.indexOf('prenom'),iPr=h.indexOf('projet'),i1=h.indexOf('encadrant1'),i2=h.indexOf('encadrant2');
+    if(iN<0||iP<0||iPr<0){ pvToast('❌ Colonnes requises : Nom, Prenom, Projet'); return; }
+    const parsed=[];
+    for(let i=1;i<rows.length;i++){ const r=rows[i]; const nom=(r[iN]+'').trim(),prenom=(r[iP]+'').trim(),projet=(r[iPr]+'').trim(); if(nom&&prenom&&projet) parsed.push({nom,prenom,projet,enc1:i1>=0?(r[i1]+'').trim():'',enc2:i2>=0?(r[i2]+'').trim():''}); }
+    if(!parsed.length){ pvToast('❌ Aucune ligne valide'); return; }
+    _etudPending=parsed; pvPreviewEtud();
+  };
+  reader.readAsArrayBuffer(file);
+}
+function pvPreviewEtud(){
+  const d=_etudPending;
+  pvOpen(
+    "<h2>👨‍🎓 Aperçu de l'import</h2><div class='pv-count'>"+d.length+" étudiant(s) détecté(s)</div>"+
+    "<div class='pv-tablewrap'><table class='pv-table'><thead><tr><th>Nom</th><th>Prénom</th><th>Projet</th><th>Enc. 1</th><th>Enc. 2</th></tr></thead><tbody>"+
+    d.slice(0,80).map(e=>"<tr><td>"+esc(e.nom)+"</td><td>"+esc(e.prenom)+"</td><td>"+esc(e.projet)+"</td><td>"+esc(e.enc1)+"</td><td>"+esc(e.enc2)+"</td></tr>").join('')+
+    (d.length>80?"<tr><td colspan='5' style='text-align:center;color:var(--muted)'>…et "+(d.length-80)+" autres</td></tr>":"")+
+    "</tbody></table></div>"+
+    "<div class='pv-warn'>⚠️ L'import remplacera la liste existante.</div>"+
+    "<div class='pv-actions'><button class='pv-btn' onclick='openEtudiants()'>← Retour</button><button class='pv-btn ok' onclick='pvConfirmEtud()'>✔ Confirmer l'import</button></div>"
+  );
+}
+async function pvConfirmEtud(){
+  pvToast('💾 Import en cours…');
+  const {error:delErr}=await sb.from('etudiants').delete().neq('id',0);
+  if(delErr){ pvToast('❌ '+delErr.message); return; }
+  const rows=_etudPending.map(e=>({nom:e.nom,prenom:e.prenom,projet:e.projet,encadrant1:e.enc1||'',encadrant2:e.enc2||''}));
+  const {error:insErr}=await sb.from('etudiants').insert(rows);
+  if(insErr){ pvToast('❌ '+insErr.message); return; }
+  pvToast('✅ '+rows.length+' étudiant(s) importé(s)'); openEtudiants();
+}
+async function pvClearEtud(){
+  if(!confirm('Supprimer toute la liste des étudiants ?')) return;
+  await sb.from('etudiants').delete().neq('id',0);
+  pvToast('🗑 Liste supprimée'); openEtudiants();
+}
+</script>
 </body>
 </html>
