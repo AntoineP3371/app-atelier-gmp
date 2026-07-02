@@ -113,8 +113,7 @@
   .pbar-label{font-size:.82rem;color:var(--muted);font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between;gap:8px}
   .pbar-label .over-txt{color:var(--danger);font-weight:700}
   .pbar{height:10px;background:#e6eef3;border-radius:20px;overflow:hidden}
-  .pbar-fill{height:100%;background:var(--primary);border-radius:20px;transition:width .3s}
-  .pbar-fill.over{background:var(--danger)}
+  .pbar-fill{height:100%;border-radius:20px;transition:width .3s,background-size .3s;background-image:linear-gradient(90deg,#0083ba,#22c55e,#f59e0b,#ef4444);background-repeat:no-repeat;background-position:left center}
   /* Cellule paramètres opérateur */
   .param-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
   .param-tag{font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:5px;background:var(--primary-light);color:var(--primary-dark)}
@@ -453,7 +452,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // ⚠️ Collez ici l'URL /exec de votre déploiement Google Apps Script :
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9ksxZ4TpFQUaZhXbS2lXSyrPgRzDTaUtyINhLWIMw5dGAFY1X0Dc3aAm9OBjZlv_2sA/exec';
 
-const APP_VERSION = 'v1.2.0';
+const APP_VERSION = 'v1.2.1';
 const MAX_FILE_MB = 50;
 const ADMIN_CODE  = 'admin1234';   // mot de passe admin fixe (non modifiable)
 
@@ -576,9 +575,10 @@ async function updateProjetProgress(){
   const n=count||0, lim=projetLimite(projet);
   const pct=Math.min(100, lim>0?Math.round(n/lim*100):0);
   const over=n>=lim;
+  const bgSize = pct>0 ? Math.round(10000/pct) : 100; // le dégradé couvre toute la piste → révélé selon le remplissage
   box.innerHTML="<div class='pbar-wrap'><div class='pbar-label'><span>Impressions du projet «&nbsp;"+esc(projet)+"&nbsp;»</span>"+
     "<span"+(over?" class='over-txt'":"")+">"+n+" / "+lim+(over?" — limite atteinte":"")+"</span></div>"+
-    "<div class='pbar'><div class='pbar-fill"+(over?' over':'')+"' style='width:"+pct+"%'></div></div></div>";
+    "<div class='pbar'><div class='pbar-fill' style='width:"+pct+"%;background-size:"+bgSize+"% 100%'></div></div></div>";
 }
 function buildEtudiantOptions(projet){
   const esel=document.getElementById('fetudiant');
