@@ -1,5 +1,5 @@
-const CACHE = 'reservation-gmp-v1.0';
-const ASSETS = ['/', '/index.html', '/petitgmp.png', '/BM_GMP_HD_1000.png', '/manifest.json'];
+const CACHE = 'reservation-gmp-v1.1';
+const ASSETS = ['./', './index.html', './petitgmp.png', './BM_GMP_HD_1000.png', './manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
