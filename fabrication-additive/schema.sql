@@ -44,6 +44,8 @@ alter table public.demandes add column if not exists usinage              boolea
 alter table public.demandes add column if not exists finition             text default 'brouillon';
 alter table public.demandes add column if not exists temps_categorie      text default '';
 alter table public.demandes add column if not exists encadrant_commentaire text default '';
+alter table public.demandes add column if not exists en_cours_at          timestamptz;
+alter table public.demandes add column if not exists duree_reelle_min     integer default 0;
 
 -- Index pour le suivi étudiant (recherche par nom/prénom) et les listes
 create index if not exists demandes_statut_idx  on public.demandes (statut);
