@@ -139,6 +139,10 @@
   /* Tableau opérateur */
   .table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
   table{border-collapse:collapse;width:100%;min-width:720px;background:var(--surface)}
+  /* Table simple (ex. Limites par projet) : pas de largeur minimale forcée, reste utilisable sur mobile */
+  table.simple-table{min-width:0}
+  table.simple-table th,table.simple-table td{padding:8px 10px}
+  table.simple-table .lim-input{width:82px;padding:6px 9px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:.9rem}
   th{background:#e8f5fb;padding:10px;font-size:.78rem;font-weight:700;color:var(--muted);text-align:left;border-bottom:2px solid var(--border);white-space:nowrap}
   td{padding:9px 10px;font-size:.85rem;border-bottom:1px solid var(--border);vertical-align:middle}
   tr:hover td{background:#f7fbfd}
@@ -206,6 +210,8 @@
   .busy .spinner{width:38px;height:38px;border-width:4px}
   .busy .busy-txt{font-weight:600;color:var(--primary-dark)}
   .empty{text-align:center;color:var(--muted);padding:24px;font-size:.9rem}
+  .op-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .op-toolbar-btns{display:flex;gap:6px;flex-wrap:wrap}
   /* ─── Mobile : sections Opérateur & Encadrant ─── */
   @media(max-width:640px){
     body{padding:14px 10px 60px}
@@ -231,6 +237,14 @@
     /* Cartes encadrant */
     .demande-card .dc-actions .btn{flex:1;justify-content:center}
     .table-wrap{border:none}
+    /* Boutons Export CSV / Limites par projet : alignés, centrés, espacés du premier cadre */
+    .op-toolbar{flex-direction:column;align-items:stretch;margin-bottom:18px}
+    .op-toolbar-btns{justify-content:center;margin-top:8px}
+    .op-toolbar-btns .btn{flex:1;justify-content:center;text-align:center}
+    /* Fenêtre « Limites par projet » : rester utilisable en mobile (pas de défilement caché) */
+    table.simple-table th,table.simple-table td{padding:6px 6px;font-size:.82rem}
+    table.simple-table td:first-child{word-break:break-word;max-width:120px}
+    table.simple-table .lim-input{width:64px}
   }
 </style>
 </head>
@@ -363,9 +377,9 @@
   <!-- ============ VUE OPÉRATEUR ============ -->
   <section id="view-operateur" class="view">
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="op-toolbar">
         <div><h2>Tableau des impressions</h2><div class="sub">Demandes validées à imprimer. Mise à jour en temps réel.</div></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <div class="op-toolbar-btns">
           <button class="btn btn-ghost" onclick="openExport()">📥 Export CSV</button>
           <button class="btn btn-ghost" onclick="openLimites()">📊 Limites par projet</button>
         </div>
@@ -525,7 +539,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // ⚠️ Collez ici l'URL /exec de votre déploiement Google Apps Script :
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9ksxZ4TpFQUaZhXbS2lXSyrPgRzDTaUtyINhLWIMw5dGAFY1X0Dc3aAm9OBjZlv_2sA/exec';
 
-const APP_VERSION = 'v1.5.1';
+const APP_VERSION = 'v1.6.0';
 const MAX_FILE_MB = 50;
 const ADMIN_CODE  = 'admin1234';   // mot de passe admin fixe (non modifiable)
 
@@ -621,12 +635,12 @@ function parseMachines(){
 }
 async function loadEtudiants(){
   const {data,error} = await sb.from('etudiants').select('*').order('projet').order('nom');
-  etudiants = (!error && data) ? data.map(r=>({nom:r.nom||'',prenom:r.prenom||'',projet:r.projet||'',enc1:r.encadrant1||'',enc2:r.encadrant2||''})) : [];
+  etudiants = (!error && data) ? data.map(r=>({nom:r.nom||'',prenom:r.prenom||'',projet:r.projet||'',formation:r.formation||'',enc1:r.encadrant1||'',enc2:r.encadrant2||'',enc3:r.encadrant3||''})) : [];
   projets = [...new Set(etudiants.map(e=>e.projet).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const encs=[]; projetEncadrants={};
   etudiants.forEach(e=>{
-    if(e.enc1)encs.push(e.enc1); if(e.enc2)encs.push(e.enc2);
-    if(e.projet){ const s=projetEncadrants[e.projet]||(projetEncadrants[e.projet]=new Set()); if(e.enc1)s.add(e.enc1); if(e.enc2)s.add(e.enc2); }
+    if(e.enc1)encs.push(e.enc1); if(e.enc2)encs.push(e.enc2); if(e.enc3)encs.push(e.enc3);
+    if(e.projet){ const s=projetEncadrants[e.projet]||(projetEncadrants[e.projet]=new Set()); if(e.enc1)s.add(e.enc1); if(e.enc2)s.add(e.enc2); if(e.enc3)s.add(e.enc3); }
   });
   encadrantsList=[...new Set(encs)].sort((a,b)=>a.localeCompare(b));
   buildStudentLists();
@@ -984,7 +998,7 @@ function demandeCardEncadrant(d){
   const params=machineLabel(d.machine)+" · "+esc(tempsLabel(d))+" · "+(d.finition==='finition'?'Finition':'Brouillon')+(opts.length?" · "+esc(opts.join(', ')):"");
   return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>📄 "+esc(d.fichier_nom)+"</div>"+
-    "<div class='dc-meta'>👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · 🗂️ "+esc(d.projet)+" · n°"+(d.numero||'?')+"<br>"+
+    "<div class='dc-meta'>👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · "+esc(d.projet)+" · n°"+(d.numero||'?')+"<br>"+
     params+(d.bbox?" · 📐 "+esc(d.bbox):"")+(d.notes?"<br>📝 "+esc(d.notes):"")+"</div></div>"+
     "<div>"+badge(d.statut)+"</div></div>"+
     "<textarea id='enccom-"+d.id+"' class='enc-comment' rows='2' placeholder='Commentaire opérateur (optionnel)…'></textarea>"+
@@ -1176,10 +1190,10 @@ async function openLimites(){
   const counts={}; (data||[]).forEach(r=>{ if(r.projet) counts[r.projet]=(counts[r.projet]||0)+1; });
   const projs=Object.keys(counts).sort((a,b)=>a.localeCompare(b));
   if(!projs.length){ box.innerHTML="<div class='empty'>Aucune demande pour le moment. Limite par défaut : "+limiteDefaut()+".</div>"; return; }
-  box.innerHTML="<div class='table-wrap'><table><thead><tr><th>Projet</th><th>Impressions</th><th>Limite</th></tr></thead><tbody>"+
+  box.innerHTML="<div class='table-wrap'><table class='simple-table'><thead><tr><th>Projet</th><th>Impressions</th><th>Limite</th></tr></thead><tbody>"+
     projs.map(p=>{ const n=counts[p], lim=projetLimite(p), over=n>=lim;
       return "<tr><td>"+esc(p)+"</td><td>"+(over?"<b style='color:var(--danger)'>"+n+"</b>":n)+
-      "</td><td><input type='number' min='1' step='1' class='lim-input' data-projet=\""+esc(p)+"\" value='"+lim+"' style='width:82px;padding:6px 9px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit'></td></tr>";
+      "</td><td><input type='number' min='1' step='1' class='lim-input' data-projet=\""+esc(p)+"\" value='"+lim+"'></td></tr>";
     }).join('')+"</tbody></table></div>";
 }
 async function saveLimites(){
@@ -1278,7 +1292,7 @@ async function rechercherSuivi(silent){
   const html=progress+data.map(d=>{
     const end=countdownEnd(d);
     return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
-    "<div><div class='dc-title'>🗂️ "+esc(d.projet)+" — "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</div>"+
+    "<div><div class='dc-title'>"+esc(d.projet)+" — "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</div>"+
     "<div class='dc-meta'>n°"+(d.numero||'?')+" · "+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+" · 📄 "+esc(d.fichier_nom)+
     (d.encadrant_nom?"<br>✔️ Validé par "+esc(d.encadrant_nom):"")+
     (d.operateur_nom?"<br>🛠️ Traité par "+esc(d.operateur_nom):"")+

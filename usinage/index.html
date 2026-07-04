@@ -334,14 +334,6 @@
   .stats-custom-range input[type=date]{border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:.8rem}
   .stats-period-label{font-size:.75rem;color:var(--muted);margin-bottom:8px;font-style:italic}
   .stats-loading{text-align:center;padding:24px;color:var(--muted);font-size:.85rem}
-  .etud-import-area{border:2px dashed var(--border);border-radius:10px;padding:18px;text-align:center;cursor:pointer;color:var(--muted);font-size:.85rem;transition:border-color .2s;margin:12px 0}
-  .etud-import-area:hover,.etud-import-area.drag-over{border-color:var(--primary);color:var(--primary)}
-  .etud-preview-table{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:10px;max-height:220px;display:block;overflow-y:auto}
-  .etud-preview-table th{background:var(--primary-light);color:var(--primary-dark);padding:5px 8px;border:1px solid var(--border);position:sticky;top:0}
-  .etud-preview-table td{padding:4px 8px;border:1px solid var(--border)}
-  .etud-preview-table tr:nth-child(even) td{background:#f7fbfe}
-  .etud-list-count{font-size:.78rem;color:var(--muted);margin:4px 0}
-  .etud-section-title{font-size:.82rem;font-weight:600;color:var(--primary-dark);margin:10px 0 4px}
   .booking-student-sel select{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:.85rem;background:var(--surface);color:var(--text)}
   .booking-student-sel select.err{border-color:#e53e3e}
   @media(max-width:640px){
@@ -482,7 +474,6 @@ let openModalName  = null;
 let searchTerm     = '';
 let opFilterVal    = '';
 let etudiants      = []; // [{ nom, prenom, projet }]
-let _etudPending   = []; // buffer d'import en attente de confirmation
 let machineStatus  = {}; // { machineName: 'ok'|'panne'|'maintenance' }
 let machineStatusReason = {};
 let machineStatusDate  = {}; // { machineName: 'YYYY-MM-DD' } date de déclaration panne
@@ -684,7 +675,7 @@ function buildPrintTable(pageMachines, week){
           td+='background:'+colorLight+';border-left:2px solid '+color+';';
           inner+='<strong>'+esc(r.nom)+' '+esc(r.prenom)+'</strong>'
             +(r.operateur?'<br><span style="color:#0083ba">'+esc(r.operateur)+'</span>':'')
-            +(r.projet?'<br><em style="color:#5b7686">'+esc(r.projet)+([r.encadrant1,r.encadrant2].filter(Boolean).length?' ('+esc([r.encadrant1,r.encadrant2].filter(Boolean).join(', '))+')':'')+'</em>':'');
+            +(r.projet?'<br><em style="color:#5b7686">'+esc(r.projet)+([r.encadrant1,r.encadrant2,r.encadrant3].filter(Boolean).length?' ('+esc([r.encadrant1,r.encadrant2,r.encadrant3].filter(Boolean).join(', '))+')':'')+'</em>':'');
         } else if(isPanne){
           td+='background:#fef2f2;color:#b91c1c;';
           inner+='🔧 '+mSt;
@@ -871,114 +862,11 @@ async function loadDisabled(){
 async function loadEtudiants(){
   const {data,error} = await sb.from('etudiants').select('*').order('projet').order('nom');
   if(error){ console.error('etudiants:', error); return; }
-  etudiants = data ? data.map(r=>({nom:r.nom||'',prenom:r.prenom||'',projet:r.projet||'',enc1:r.encadrant1||'',enc2:r.encadrant2||''})) : [];
+  etudiants = data ? data.map(r=>({nom:r.nom||'',prenom:r.prenom||'',projet:r.projet||'',enc1:r.encadrant1||'',enc2:r.encadrant2||'',enc3:r.encadrant3||''})) : [];
 }
 
-// ─── GESTION ÉTUDIANTS ──────────────────────────────────────────────────────
-function showEtudiantsManager(){
-  var projets=[...new Set(etudiants.map(e=>e.projet))].sort();
-  var listHtml='';
-  if(etudiants.length===0){
-    listHtml="<div class='etud-list-count'>Aucun étudiant importé.</div>";
-  } else {
-    listHtml="<div class='etud-list-count'>"+etudiants.length+" étudiant(s) chargé(s) — "+projets.length+" projet(s)</div>";
-    listHtml+="<table class='etud-preview-table'><thead><tr><th>Nom</th><th>Prénom</th><th>Projet</th></tr></thead><tbody>";
-    etudiants.forEach(e=>{ listHtml+="<tr><td>"+esc(e.nom)+"</td><td>"+esc(e.prenom)+"</td><td>"+esc(e.projet)+"</td></tr>"; });
-    listHtml+="</tbody></table>";
-  }
-  var html="<div class='modal-title'>👨‍🎓 Gestion des étudiants</div>";
-  html+=listHtml;
-  html+="<div class='etud-section-title'>Importer une nouvelle liste (.xlsx)</div>";
-  html+="<div class='etud-import-area' id='etudDropZone' onclick='document.getElementById(\"etudFileIn\").click()' ondragover='onEtudDragOver(event)' ondragleave='onEtudDragLeave(event)' ondrop='onEtudDrop(event)'>📂 Cliquez ou glissez un fichier .xlsx ici</div>";
-  html+="<input type='file' id='etudFileIn' accept='.xlsx,.xls' style='display:none' onchange='onEtudFileChange(this)'>";
-  html+="<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:4px'>";
-  html+="<button class='btn' onclick='generateEtudiantsXlsx()'>⬇ Télécharger le modèle</button>";
-  if(etudiants.length>0) html+="<button class='btn btn-del' onclick='clearEtudiants()'>🗑 Vider la liste</button>";
-  html+="</div>";
-  html+="<div class='modal-actions'><button class='btn btn-close' onclick='closeModal()'>Fermer</button></div>";
-  openModal(html);
-}
-
-function generateEtudiantsXlsx(){
-  var wb=XLSX.utils.book_new();
-  var sampleData=[
-    ["Nom","Prenom","Projet","Encadrant1","Encadrant2"],
-    ["MARTIN","Alice","Projet A","Dubois Jean","Leroi Marie"],
-    ["DUPONT","Bob","Projet A","Dubois Jean","Leroi Marie"],
-    ["BERNARD","Clara","Projet B","Moreau Paul",""],
-  ];
-  var ws=XLSX.utils.aoa_to_sheet(sampleData);
-  ws['!cols']=[{wch:18},{wch:18},{wch:25},{wch:20},{wch:20}];
-  XLSX.utils.book_append_sheet(wb,ws,"Etudiants");
-  XLSX.writeFile(wb,"modele_etudiants.xlsx");
-}
-
-function onEtudDragOver(e){ e.preventDefault(); document.getElementById('etudDropZone').classList.add('drag-over'); }
-function onEtudDragLeave(e){ document.getElementById('etudDropZone').classList.remove('drag-over'); }
-function onEtudDrop(e){ e.preventDefault(); document.getElementById('etudDropZone').classList.remove('drag-over'); if(e.dataTransfer.files[0]) parseEtudiantsFile(e.dataTransfer.files[0]); }
-function onEtudFileChange(inp){ if(inp.files[0]) parseEtudiantsFile(inp.files[0]); }
-
-function parseEtudiantsFile(file){
-  var reader=new FileReader();
-  reader.onload=function(e){
-    var data=new Uint8Array(e.target.result);
-    var wb=XLSX.read(data,{type:'array'});
-    var ws=wb.Sheets[wb.SheetNames[0]];
-    var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-    if(rows.length<2){ showToast('❌ Fichier vide ou invalide'); return; }
-    var header=rows[0].map(h=>(h+'').trim().toLowerCase());
-    var iNom=header.indexOf('nom'), iPrenom=header.indexOf('prenom'), iProjet=header.indexOf('projet');
-    var iEnc1=header.indexOf('encadrant1'), iEnc2=header.indexOf('encadrant2');
-    if(iNom<0||iPrenom<0||iProjet<0){ showToast('❌ Colonnes manquantes : Nom, Prenom, Projet requises'); return; }
-    var parsed=[];
-    for(var i=1;i<rows.length;i++){
-      var r=rows[i];
-      var nom=(r[iNom]+'').trim(), prenom=(r[iPrenom]+'').trim(), projet=(r[iProjet]+'').trim();
-      var enc1=iEnc1>=0?(r[iEnc1]+'').trim():'', enc2=iEnc2>=0?(r[iEnc2]+'').trim():'';
-      if(nom&&prenom&&projet) parsed.push({nom,prenom,projet,enc1,enc2});
-    }
-    if(parsed.length===0){ showToast('❌ Aucune ligne valide trouvée'); return; }
-    previewEtudiantsImport(parsed);
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function previewEtudiantsImport(data){
-  _etudPending=data;
-  var html="<div class='modal-title'>👨‍🎓 Aperçu de l'import</div>";
-  html+="<div class='etud-list-count'>"+data.length+" étudiant(s) détecté(s)</div>";
-  html+="<table class='etud-preview-table'><thead><tr><th>Nom</th><th>Prénom</th><th>Projet</th><th>Encadrant 1</th><th>Encadrant 2</th></tr></thead><tbody>";
-  data.slice(0,50).forEach(e=>{ html+="<tr><td>"+esc(e.nom)+"</td><td>"+esc(e.prenom)+"</td><td>"+esc(e.projet)+"</td><td>"+esc(e.enc1||'')+"</td><td>"+esc(e.enc2||'')+"</td></tr>"; });
-  if(data.length>50) html+="<tr><td colspan='3' style='color:var(--muted);text-align:center'>...et "+(data.length-50)+" autres</td></tr>";
-  html+="</tbody></table>";
-  html+="<div class='disclaimer-note' style='margin-top:10px'>⚠️ L'import remplacera la liste existante.</div>";
-  html+="<div class='modal-actions'>";
-  html+="<button class='btn btn-close' onclick='showEtudiantsManager()'>← Retour</button>";
-  html+="<button class='btn btn-ok' onclick='confirmEtudiantsImport()'>✔ Confirmer l'import</button>";
-  html+="</div>";
-  openModal(html);
-}
-
-async function confirmEtudiantsImport(){
-  var data=_etudPending;
-  showToast('💾 Import en cours…');
-  var {error:delErr}=await sb.from('etudiants').delete().neq('id',0);
-  if(delErr){ showToast('❌ Erreur suppression : '+(delErr.message||'')); return; }
-  var rows=data.map(e=>({nom:e.nom,prenom:e.prenom,projet:e.projet,encadrant1:e.enc1||'',encadrant2:e.enc2||''}));
-  var {error:insErr}=await sb.from('etudiants').insert(rows);
-  if(insErr){ showToast('❌ Erreur import : '+(insErr.message||'')); return; }
-  await loadEtudiants();
-  showToast('✅ '+data.length+' étudiant(s) importé(s)');
-  showEtudiantsManager();
-}
-
-async function clearEtudiants(){
-  if(!confirm('Supprimer toute la liste des étudiants ?')) return;
-  await sb.from('etudiants').delete().neq('id',0);
-  etudiants=[];
-  showToast('🗑 Liste supprimée');
-  showEtudiantsManager();
-}
+// La gestion des étudiants (import, aperçu, liste) se fait désormais depuis le portail
+// d'accueil, sur la base partagée — voir reservation-machines/index.html.
 
 // ─── SUPABASE : ÉCRITURE ───────────────────────────────────────────────────────
 async function dbAddBooking(machine,date,slot,data){
@@ -1088,7 +976,7 @@ function buildMultiMachineAgendaTable(machineList,days){
           content="<div class='slot-time'>"+slot+"</div>"+
             "<div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div>"+
             (r.operateur?"<div class='slot-operateur'>"+esc(r.operateur)+"</div>":"")+
-            (r.projet?"<div class='slot-projet'>"+esc(r.projet)+([r.encadrant1,r.encadrant2].filter(Boolean).length?' ('+esc([r.encadrant1,r.encadrant2].filter(Boolean).join(', '))+')':"")+"</div>":""); }
+            (r.projet?"<div class='slot-projet'>"+esc(r.projet)+([r.encadrant1,r.encadrant2,r.encadrant3].filter(Boolean).length?' ('+esc([r.encadrant1,r.encadrant2,r.encadrant3].filter(Boolean).join(', '))+')':"")+"</div>":""); }
         else { cls="free"+tc; content="<div class='slot-time'>"+slot+"</div><div class='slot-free-label'>Libre</div>"; }
         html+="<td><div class='slot-cell "+cls+"'"+inlineStyle+">"+content+"</div></td>";
       });
@@ -1138,7 +1026,7 @@ function checkPw(){
 }
 function runPendingManager(){
   var pm=window.__pendingManager; window.__pendingManager=null;
-  ({machines:openMachineManager,operateurs:openOperateurManager,carousel:openCarouselConfig,history:openHistory,ical:openIcalExport,carouselview:startMachineCarousel,etudiants:showEtudiantsManager})[pm]?.();
+  ({machines:openMachineManager,operateurs:openOperateurManager,carousel:openCarouselConfig,history:openHistory,ical:openIcalExport,carouselview:startMachineCarousel})[pm]?.();
 }
 function logoutAdmin(){ isAdmin=false; sessionStorage.removeItem('isAdmin'); applyAdminUI(); render(); }
 function applyAdminUI(){
@@ -1674,7 +1562,7 @@ function book(machine,date,slot){
   var projets=useEtudList?[...new Set(etudiants.map(e=>e.projet))].sort():[];
   var dlProjets=useEtudList?"<datalist id='dl-projets'>"+projets.map(p=>"<option value='"+esc(p)+"'>").join('')+"</datalist>":'';
   var dlNoms="<datalist id='dl-noms'></datalist>";
-  var hiddenEncs="<input type='hidden' id='fenc1'><input type='hidden' id='fenc2'>";
+  var hiddenEncs="<input type='hidden' id='fenc1'><input type='hidden' id='fenc2'><input type='hidden' id='fenc3'>";
   openModal(
     "<h2>Nouvelle réservation</h2>"+
     "<div class='meta'>"+esc(machine)+" — "+esc(dayLabel)+" — "+esc(slot)+"</div>"+
@@ -1746,9 +1634,10 @@ function onBookingProjetInput(val){
   if(prenomIn) prenomIn.value='';
   // auto-remplissage des encadrants selon le projet
   var match=etudiants.find(e=>e.projet===projet);
-  var e1=document.getElementById('fenc1'), e2=document.getElementById('fenc2');
+  var e1=document.getElementById('fenc1'), e2=document.getElementById('fenc2'), e3=document.getElementById('fenc3');
   if(e1) e1.value=match?match.enc1||'':'';
   if(e2) e2.value=match?match.enc2||'':'';
+  if(e3) e3.value=match?match.enc3||'':'';
 }
 function onBookingNomInput(val){
   var projet=(document.getElementById('fprojet')||{}).value||'';
@@ -1786,7 +1675,8 @@ async function submitBook(machine,date,slot){
     projet:document.getElementById("fprojet").value.trim(),
     pin:document.getElementById("fpin").value.trim(),
     encadrant1:(document.getElementById("fenc1")||{}).value||'',
-    encadrant2:(document.getElementById("fenc2")||{}).value||''
+    encadrant2:(document.getElementById("fenc2")||{}).value||'',
+    encadrant3:(document.getElementById("fenc3")||{}).value||''
   };
   // Ajouter nouvel opérateur si besoin
   if(document.getElementById("foperateur").value==="__new__" && opVal && !operateurs.includes(opVal)){
@@ -1878,7 +1768,7 @@ async function submitEditBooking(key){
   if(opcodeErrEl) opcodeErrEl.classList.remove("show");
   if(document.getElementById("edit-operateur").value==="__new__" && opVal && !operateurs.includes(opVal)){ operateurs.push(opVal); operateursPhone[opVal]={phone:'',apikey:''}; await sb.from('operateurs').insert({name:opVal, phone:'', apikey:''}); }
   var parts=key.split("|");
-  var data={nom:document.getElementById("edit-nom").value.trim(),prenom:document.getElementById("edit-prenom").value.trim(),operateur:opVal,projet:document.getElementById("edit-projet").value.trim(),encadrant1:bookings[key].encadrant1||'',encadrant2:bookings[key].encadrant2||''};
+  var data={nom:document.getElementById("edit-nom").value.trim(),prenom:document.getElementById("edit-prenom").value.trim(),operateur:opVal,projet:document.getElementById("edit-projet").value.trim(),encadrant1:bookings[key].encadrant1||'',encadrant2:bookings[key].encadrant2||'',encadrant3:bookings[key].encadrant3||''};
   // Nouvelle place choisie (machine / date / créneau)
   var nm=document.getElementById("edit-machine").value;
   var nd=document.getElementById("edit-date").value;
@@ -1978,7 +1868,7 @@ async function moveBooking(srcKey,destKey){
   var r=bookings[srcKey]; if(!r) return;
   if(bookings[destKey]||disabled[destKey]){ showToast("❌ Case déjà occupée"); render(); return; }
   var sp=srcKey.split('|'), dp=destKey.split('|');
-  var payload={nom:r.nom,prenom:r.prenom,operateur:r.operateur,projet:r.projet,pin:r.pin,encadrant1:r.encadrant1||'',encadrant2:r.encadrant2||''};
+  var payload={nom:r.nom,prenom:r.prenom,operateur:r.operateur,projet:r.projet,pin:r.pin,encadrant1:r.encadrant1||'',encadrant2:r.encadrant2||'',encadrant3:r.encadrant3||''};
   var _before=snapState();
   showToast("💾 Déplacement…");
   var ok=await dbAddBooking(dp[0],dp[1],dp[2],payload);
@@ -2089,7 +1979,7 @@ function render(){
           content="<div class='slot-time'>"+slot+"</div>"+
             "<div class='slot-name'>"+esc(r.nom)+" "+esc(r.prenom)+"</div>"+
             (r.operateur?"<div class='slot-operateur'>"+esc(r.operateur)+"</div>":"")+
-            (r.projet?"<div class='slot-projet'>"+esc(r.projet)+([r.encadrant1,r.encadrant2].filter(Boolean).length?' ('+esc([r.encadrant1,r.encadrant2].filter(Boolean).join(', '))+')':"")+"</div>":"");
+            (r.projet?"<div class='slot-projet'>"+esc(r.projet)+([r.encadrant1,r.encadrant2,r.encadrant3].filter(Boolean).length?' ('+esc([r.encadrant1,r.encadrant2,r.encadrant3].filter(Boolean).join(', '))+')':"")+"</div>":"");
           if(isAdmin) adm="<div class='slot-admin-actions'><button class='admin-slot-btn del' title='Supprimer' onclick='event.stopPropagation();adminDel(\""+jsesc(key)+"\")'>✕</button><button class='admin-slot-btn edit' title='Modifier' onclick='event.stopPropagation();openEditBookingModal(\""+jsesc(key)+"\")'>✏️</button></div>";
           if(isFilterActive){
             var st=searchTerm;

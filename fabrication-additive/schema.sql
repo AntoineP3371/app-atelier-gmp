@@ -2,8 +2,9 @@
 --  Impression 3D — schéma à coller dans le SQL Editor de Supabase
 --  (MÊME projet que reservation-machines : ggmlfbxppgeivfvlxxrj)
 --
---  Ce script AJOUTE deux tables (demandes, parametres).
---  Il NE touche PAS aux tables existantes etudiants / operateurs.
+--  Ce script AJOUTE deux tables (demandes, parametres) et quelques colonnes aux tables
+--  existantes etudiants (formation, encadrant3) et bookings (encadrant3, pour l'appli
+--  Usinage). Il ne supprime ni ne modifie aucune donnée existante.
 --  On peut le relancer sans risque (IF NOT EXISTS partout).
 -- =====================================================================
 
@@ -51,7 +52,16 @@ alter table public.demandes add column if not exists operateur_nom        text d
 -- Index pour le suivi étudiant (recherche par nom/prénom) et les listes
 create index if not exists demandes_statut_idx  on public.demandes (statut);
 create index if not exists demandes_etudiant_idx on public.demandes (lower(etudiant_nom), lower(etudiant_prenom));
+
+-- Colonnes ajoutées à la table etudiants (gestion depuis la page d'accueil) :
+-- formation de l'étudiant (2A, 2I, 3A...) et 3e encadrant possible.
+alter table public.etudiants add column if not exists formation  text default '';
+alter table public.etudiants add column if not exists encadrant3 text default '';
 create index if not exists demandes_projet_idx   on public.demandes (projet);
+
+-- Colonne ajoutée à la table bookings (Réservation Machines / usinage) : le 3e encadrant
+-- d'un projet est désormais aussi affiché/rempli automatiquement lors d'une réservation.
+alter table public.bookings add column if not exists encadrant3 text default '';
 
 -- ---------- Table des paramètres (clé / valeur) ----------------------
 create table if not exists public.parametres (
