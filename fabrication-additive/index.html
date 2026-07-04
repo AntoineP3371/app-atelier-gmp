@@ -1362,7 +1362,7 @@ async function loadStats(){
   let tempsTotal=0;
   d.forEach(x=>{
     byStatut[x.statut]=(byStatut[x.statut]||0)+1;
-    const t = (x.duree_reelle_min||x.temps_estime_min||0);
+    const t = (x.duree_reelle_min||0);
     if(x.statut==='imprimee'||x.statut==='en_cours') tempsTotal+=t;
     const m=machineLabel(x.machine); byMachine[m]=byMachine[m]||{count:0,temps:0}; byMachine[m].count++; byMachine[m].temps+=t;
     const f=formationDe(x); byFormation[f]=(byFormation[f]||0)+1;
