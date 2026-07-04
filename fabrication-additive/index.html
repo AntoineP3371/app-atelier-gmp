@@ -153,7 +153,12 @@
   .badge.refusee{background:var(--danger-light);color:var(--danger)}
 
   /* Liste de demandes (encadrant / suivi) */
-  .demande-card{border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;background:var(--surface)}
+  .demande-card{border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;background:var(--surface);border-left-width:5px}
+  .demande-card.st-en_attente{background:#fffbeb;border-left-color:var(--amber)}
+  .demande-card.st-validee{background:#f0f9ff;border-left-color:var(--primary)}
+  .demande-card.st-en_cours{background:#eef2ff;border-left-color:#4338ca}
+  .demande-card.st-imprimee{background:#f0fdf4;border-left-color:var(--green)}
+  .demande-card.st-refusee{background:#fef2f2;border-left-color:var(--danger)}
   .demande-card .dc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
   .demande-card .dc-title{font-weight:700}
   .demande-card .dc-meta{font-size:.82rem;color:var(--muted);margin-top:3px}
@@ -334,7 +339,10 @@
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
         <div><h2>Tableau des impressions</h2><div class="sub">Demandes validées à imprimer. Mise à jour en temps réel.</div></div>
-        <button class="btn btn-ghost" onclick="openLimites()">📊 Limites par projet</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost" onclick="openExport()">📥 Export CSV</button>
+          <button class="btn btn-ghost" onclick="openLimites()">📊 Limites par projet</button>
+        </div>
       </div>
       <div id="operateurResults"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
     </div>
@@ -437,6 +445,22 @@
   </div>
 </div>
 
+<!-- ============ MODALE : export CSV (opérateur) ============ -->
+<div class="overlay" id="ovExport">
+  <div class="modal">
+    <h2>📥 Export CSV des impressions</h2>
+    <div class="meta">Choisissez la période (basée sur la date de dépôt des demandes).</div>
+    <div class="form-row">
+      <div class="form-group"><label>Du</label><input type="date" id="expDu"></div>
+      <div class="form-group"><label>Au</label><input type="date" id="expAu"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-close" onclick="closeOverlay('ovExport')">Annuler</button>
+      <button class="btn btn-ok" onclick="exporterCSV()">📥 Exporter</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODALE : viewer 3D plein écran ============ -->
 <div class="overlay" id="ovViewer">
   <div class="modal big">
@@ -461,7 +485,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // ⚠️ Collez ici l'URL /exec de votre déploiement Google Apps Script :
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9ksxZ4TpFQUaZhXbS2lXSyrPgRzDTaUtyINhLWIMw5dGAFY1X0Dc3aAm9OBjZlv_2sA/exec';
 
-const APP_VERSION = 'v1.3.1';
+const APP_VERSION = 'v1.4.0';
 const MAX_FILE_MB = 50;
 const ADMIN_CODE  = 'admin1234';   // mot de passe admin fixe (non modifiable)
 
@@ -876,7 +900,7 @@ async function loadEncadrant(){
 function demandeCardEncadrant(d){
   const opts=paramTags(d);
   const params=machineLabel(d.machine)+" · "+esc(tempsLabel(d))+" · "+(d.finition==='finition'?'Finition':'Brouillon')+(opts.length?" · "+esc(opts.join(', ')):"");
-  return "<div class='demande-card'><div class='dc-top'>"+
+  return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>📄 "+esc(d.fichier_nom)+"</div>"+
     "<div class='dc-meta'>👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · 🗂️ "+esc(d.projet)+" · n°"+(d.numero||'?')+"<br>"+
     params+(d.bbox?" · 📐 "+esc(d.bbox):"")+(d.notes?"<br>📝 "+esc(d.notes):"")+"</div></div>"+
@@ -930,7 +954,7 @@ async function loadOperateur(){
       (d.finition==='finition'?"<span class='param-tag fin'>Finition</span>":"<span class='param-tag bro'>Brouillon</span>")+
       opts.map(o=>"<span class='param-tag'>"+esc(o)+"</span>").join('')+"</div>";
     const end=countdownEnd(d);
-    const statutCell=badge(d.statut)+(end?"<div class='countdown' data-end='"+end+"'></div>":"");
+    const statutCell=badge(d.statut)+(d.operateur_nom?"<div style='font-size:.72rem;color:var(--muted);margin-top:2px'>🛠️ "+esc(d.operateur_nom)+"</div>":"")+(end?"<div class='countdown' data-end='"+end+"'></div>":"");
     // Durée réelle éditable + Lancer (démarre le minuteur) ; états modifiables à tout moment
     const dureeVal=d.duree_reelle_min||d.temps_estime_min||0;
     const dh=Math.floor(dureeVal/60), dm=dureeVal%60;
@@ -959,7 +983,7 @@ async function loadOperateur(){
 }
 async function majStatut(id, statut){
   busy(true,'Mise à jour…');
-  const patch={statut};
+  const patch={statut, operateur_nom:currentOperateurNom||''};
   if(statut==='imprimee') patch.imprime_at=new Date().toISOString();
   if(statut==='validee'){ patch.en_cours_at=null; patch.imprime_at=null; }
   const {error}=await sb.from('demandes').update(patch).eq('id',id);
@@ -974,7 +998,7 @@ async function lancerImpression(id){
   const duree=hh*60+mm;
   if(!duree){ showToast('⚠️ Indiquez la durée réelle (heures / minutes) avant de lancer'); return; }
   busy(true,'Démarrage…');
-  const {error}=await sb.from('demandes').update({statut:'en_cours', duree_reelle_min:duree, en_cours_at:new Date().toISOString(), imprime_at:null}).eq('id',id);
+  const {error}=await sb.from('demandes').update({statut:'en_cours', duree_reelle_min:duree, en_cours_at:new Date().toISOString(), imprime_at:null, operateur_nom:currentOperateurNom||''}).eq('id',id);
   busy(false);
   if(error){ showToast('❌ '+error.message); return; }
   showToast('▶️ Impression lancée — minuteur démarré ('+duree+' min)');
@@ -1028,6 +1052,47 @@ async function saveLimites(){
   await loadParams(); updateProjetProgress();
   closeOverlay('ovLimites'); showToast('✅ Limites enregistrées');
 }
+function isoDate(d){ return d.toISOString().slice(0,10); }
+function openExport(){
+  const au=new Date(), du=new Date(); du.setDate(du.getDate()-30);
+  document.getElementById('expAu').value=isoDate(au);
+  document.getElementById('expDu').value=isoDate(du);
+  openOverlay('ovExport');
+}
+function csvCell(v){ v=(v==null?'':String(v)); return /[";\n\r]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+async function exporterCSV(){
+  const du=document.getElementById('expDu').value, au=document.getElementById('expAu').value;
+  if(!du || !au){ showToast('⚠️ Choisissez les deux dates'); return; }
+  busy(true,'Export…');
+  const {data,error}=await sb.from('demandes').select('*')
+    .in('statut',['validee','en_cours','imprimee'])
+    .gte('created_at', du+'T00:00:00').lte('created_at', au+'T23:59:59')
+    .order('created_at',{ascending:true});
+  busy(false);
+  if(error){ showToast('❌ '+error.message); return; }
+  if(!data || !data.length){ showToast('Aucune demande sur cette période'); return; }
+  const cols=['Date','Heure','Projet','N°','Fichier','Étudiant','Encadrant','Opérateur','Machine','Temps estimé','Durée réelle (min)','Type','Usinage','Statut','Commentaire étudiant','Commentaire encadrant'];
+  const lines=[cols.map(csvCell).join(';')];
+  data.forEach(d=>{
+    const dt=d.created_at?new Date(d.created_at):null;
+    lines.push([
+      dt?isoDate(dt):'', dt?dt.toTimeString().slice(0,5):'',
+      d.projet||'', d.numero||'', d.fichier_nom||'',
+      (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''),
+      d.encadrant_nom||'', d.operateur_nom||'',
+      (machineByNom(d.machine)?d.machine:d.machine)||'',
+      tempsLabel(d), d.duree_reelle_min||'',
+      d.finition==='finition'?'Finition':'Brouillon', d.usinage?'Oui':'Non',
+      STATUT_LABEL[d.statut]||d.statut,
+      d.notes||'', d.encadrant_commentaire||''
+    ].map(csvCell).join(';'));
+  });
+  const blob=new Blob(['﻿'+lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='impressions_'+du+'_au_'+au+'.csv';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
+  closeOverlay('ovExport'); showToast('✅ '+data.length+' demande(s) exportée(s)');
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 //  SUIVI ÉTUDIANT
@@ -1064,10 +1129,11 @@ async function rechercherSuivi(){
   if(!data.length){ box.innerHTML=progress+"<div class='empty'>Aucune demande pour ce projet.</div>"; return; }
   box.innerHTML=progress+data.map(d=>{
     const end=countdownEnd(d);
-    return "<div class='demande-card'><div class='dc-top'>"+
-    "<div><div class='dc-title'>📄 "+esc(d.fichier_nom)+"</div>"+
-    "<div class='dc-meta'>👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · n°"+(d.numero||'?')+" · "+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+
+    return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
+    "<div><div class='dc-title'>🗂️ "+esc(d.projet)+" — "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</div>"+
+    "<div class='dc-meta'>n°"+(d.numero||'?')+" · "+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+" · 📄 "+esc(d.fichier_nom)+
     (d.encadrant_nom?"<br>✔️ Validé par "+esc(d.encadrant_nom):"")+
+    (d.operateur_nom?"<br>🛠️ Traité par "+esc(d.operateur_nom):"")+
     (d.notes?"<br>📝 Commentaire étudiant : "+esc(d.notes):"")+
     (d.encadrant_commentaire?"<br>💬 Commentaire encadrant : "+esc(d.encadrant_commentaire):"")+"</div></div>"+
     "<div style='text-align:right'>"+badge(d.statut)+(end?"<div class='countdown' data-end='"+end+"'></div>":"")+"</div>"+

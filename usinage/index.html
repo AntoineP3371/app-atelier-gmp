@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Réservation Machines</title>
+<title>Usinage</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0083ba">
 <meta name="mobile-web-app-capable" content="yes">
@@ -364,7 +364,7 @@
 <header>
   <div class="icon" id="headerIcon"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-label="Usinage"><path d="M45 9h9v33h-9z"/><path d="M7 45h50v7H7z"/><path d="M12 52v4M52 52v4"/><path d="M45 17H29v6"/><path d="M24 23h10v8H24z" fill="currentColor" stroke="none"/><path d="M29 31v7"/><path d="M20 38h18v7H20z"/></svg></div>
   <div>
-    <h1>Réservation des machines</h1>
+    <h1>Usinage</h1>
     <p>Planification hebdomadaire des créneaux</p>
     <p class="app-version">v1.7.1</p>
   </div>
@@ -411,7 +411,7 @@
     <div class="toolbar-btns">
       <button class="btn btn-nav" id="printBtn" onclick="printPlanning()" style="display:none">Imprimer</button>
       <button class="btn btn-export" id="exportBtn" onclick="exportCSV()" style="display:none">↓ CSV</button>
-      <button class="btn btn-nav" onclick="startMachineCarousel()">👁 Plannings</button>
+      <button class="btn btn-nav" onclick="startMachineCarousel()">👁 Affichage plein écran</button>
       <button class="btn btn-admin" id="adminBtn" onclick="toggleAdmin()">⚙ Admin</button>
     </div>
   </div>
@@ -1517,7 +1517,7 @@ function openOperateurManager(){ openModalName='operateurs';
     "<div class='meta'>Pour chaque opérateur, vous pouvez renseigner son numéro WhatsApp et sa clé API CallMeBot. Il recevra alors automatiquement une notification WhatsApp <strong>20 minutes avant</strong> chaque créneau qui le concerne.</div>"+
     "<div style='background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:12px 14px;margin:10px 0;font-size:.82rem;color:#166534;line-height:1.6'>"+
       "<strong>📲 Comment obtenir la clé API ?</strong> L'opérateur doit, depuis son téléphone :<br>"+
-      "1. Enregistrer le numéro <strong>+34 613 01 49 37</strong> dans ses contacts WhatsApp<br>"+
+      "1. Enregistrer le numéro <strong>+34 644 86 70 49</strong> dans ses contacts WhatsApp<br>"+
       "2. Lui envoyer le message : <code style='background:#dcfce7;padding:1px 5px;border-radius:3px'>I allow callmebot to send me messages</code><br>"+
       "3. CallMeBot répond avec sa clé API à copier ici"+
     "</div>"+
