@@ -48,6 +48,8 @@ alter table public.demandes add column if not exists encadrant_commentaire text 
 alter table public.demandes add column if not exists en_cours_at          timestamptz;
 alter table public.demandes add column if not exists duree_reelle_min     integer default 0;
 alter table public.demandes add column if not exists operateur_nom        text default '';
+alter table public.demandes add column if not exists archive              boolean default false;  -- demande archivée (retirée du tableau opérateur)
+alter table public.demandes add column if not exists priorite             integer default 0;      -- ordre dans la file d'attente d'impression
 
 -- Index pour le suivi étudiant (recherche par nom/prénom) et les listes
 create index if not exists demandes_statut_idx  on public.demandes (statut);
