@@ -82,12 +82,12 @@ drop policy if exists parametres_all on public.parametres;
 create policy parametres_all on public.parametres
   for all using (true) with check (true);
 
--- ---------- Realtime (rafraîchissement du tableau opérateur) ---------
--- Ajoute la table demandes à la publication realtime si pas déjà fait.
+-- ---------- Realtime (rafraîchissement discret des écrans opérateur/encadrant/suivi) ---------
+-- Ajoute les tables à la publication realtime si pas déjà fait (etudiants et operateurs
+-- servent au rafraîchissement silencieux des listes projet/étudiant/opérateur).
 do $$
 begin
-  begin
-    alter publication supabase_realtime add table public.demandes;
-  exception when duplicate_object then null;
-  end;
+  begin alter publication supabase_realtime add table public.demandes;   exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.parametres; exception when duplicate_object then null; end;
+  begin alter publication supabase_realtime add table public.etudiants; exception when duplicate_object then null; end;
 end $$;

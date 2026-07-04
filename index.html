@@ -179,9 +179,10 @@ function pvOpen(html){ document.getElementById('pvModal').innerHTML=html; docume
 function pvClose(){ document.getElementById('pvOverlay').classList.remove('open'); }
 
 // ── Accès protégé par mot de passe ──
+// Volontairement NON persisté (ni sessionStorage, ni variable conservée après un retour arrière) :
+// il faut se réidentifier à chaque arrivée sur ces écrans, y compris via le bouton précédent du navigateur.
 let _pvPending=null;
 function portalAuth(which){
-  if(sessionStorage.getItem('portalAdmin')==='1'){ openManager(which); return; }
   _pvPending=which;
   pvOpen(
     "<h2>🔐 Administration</h2>"+
@@ -193,10 +194,13 @@ function portalAuth(which){
   setTimeout(()=>{ const i=document.getElementById('pvPw'); if(i)i.focus(); },50);
 }
 function pvCheckPw(){
-  if(document.getElementById('pvPw').value===ADMIN_PW){ sessionStorage.setItem('portalAdmin','1'); openManager(_pvPending); }
+  if(document.getElementById('pvPw').value===ADMIN_PW){ openManager(_pvPending); }
   else document.getElementById('pvPwErr').classList.add('show');
 }
 function openManager(which){ if(which==='operateurs') openOperateurs(); else openEtudiants(); }
+// Restauration depuis le cache de navigation (retour arrière/avant) : on referme tout
+// et on exige une nouvelle identification plutôt que de laisser un panneau déjà ouvert.
+window.addEventListener('pageshow', function(e){ if(e.persisted){ pvClose(); } });
 
 // ══════════════ OPÉRATEURS ══════════════
 async function openOperateurs(){

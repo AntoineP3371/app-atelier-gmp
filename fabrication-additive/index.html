@@ -159,6 +159,26 @@
   .demande-card.st-en_cours{background:#eef2ff;border-left-color:#4338ca}
   .demande-card.st-imprimee{background:#f0fdf4;border-left-color:var(--green)}
   .demande-card.st-refusee{background:#fef2f2;border-left-color:var(--danger)}
+  .op-table tbody tr.st-en_attente td{background:#fffbeb}
+  .op-table tbody tr.st-validee td{background:#f0f9ff}
+  .op-table tbody tr.st-en_cours td{background:#eef2ff}
+  .op-table tbody tr.st-imprimee td{background:#f0fdf4}
+  .op-table tbody tr.st-refusee td{background:#fef2f2}
+  .op-table tbody tr.st-en_attente td:first-child,.op-table tbody tr.st-validee td:first-child,.op-table tbody tr.st-en_cours td:first-child,.op-table tbody tr.st-imprimee td:first-child,.op-table tbody tr.st-refusee td:first-child{border-left:4px solid transparent}
+  .op-table tbody tr.st-en_attente td:first-child{border-left-color:var(--amber)}
+  .op-table tbody tr.st-validee td:first-child{border-left-color:var(--primary)}
+  .op-table tbody tr.st-en_cours td:first-child{border-left-color:#4338ca}
+  .op-table tbody tr.st-imprimee td:first-child{border-left-color:var(--green)}
+  .op-table tbody tr.st-refusee td:first-child{border-left-color:var(--danger)}
+  @media(max-width:640px){
+    .op-table tbody tr.st-en_attente,.op-table tbody tr.st-validee,.op-table tbody tr.st-en_cours,.op-table tbody tr.st-imprimee,.op-table tbody tr.st-refusee{border-left-width:5px}
+    .op-table tbody tr.st-en_attente{background:#fffbeb;border-left-color:var(--amber)}
+    .op-table tbody tr.st-validee{background:#f0f9ff;border-left-color:var(--primary)}
+    .op-table tbody tr.st-en_cours{background:#eef2ff;border-left-color:#4338ca}
+    .op-table tbody tr.st-imprimee{background:#f0fdf4;border-left-color:var(--green)}
+    .op-table tbody tr.st-refusee{background:#fef2f2;border-left-color:var(--danger)}
+    .op-table tbody tr.st-en_attente td,.op-table tbody tr.st-validee td,.op-table tbody tr.st-en_cours td,.op-table tbody tr.st-imprimee td,.op-table tbody tr.st-refusee td{background:transparent}
+  }
   .demande-card .dc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
   .demande-card .dc-title{font-weight:700}
   .demande-card .dc-meta{font-size:.82rem;color:var(--muted);margin-top:3px}
@@ -199,11 +219,15 @@
     .op-table,.op-table tbody,.op-table tr,.op-table td{display:block;width:100%}
     .op-table{min-width:0}
     .op-table tr{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;padding:8px 12px;background:var(--surface);box-shadow:var(--shadow)}
-    .op-table td{border:none;padding:6px 0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;text-align:right}
-    .op-table td::before{content:attr(data-label);font-weight:700;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;text-align:left;flex-shrink:0}
+    /* Titre de la donnée à gauche (sa propre ligne), contenu ensuite aligné à droite en dessous.
+       Plus robuste que "label + valeur sur la même ligne" quand la valeur contient plusieurs
+       éléments (badges, retours à la ligne, boutons…) qui casseraient un simple flex 2 colonnes. */
+    .op-table td{border:none;padding:7px 0;text-align:right}
+    .op-table td::before{content:attr(data-label);display:block;font-weight:700;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;text-align:left;margin-bottom:3px}
     .op-table td .cell-actions{justify-content:flex-end;flex-wrap:wrap}
-    .op-table .cell-comment,.op-table .param-badges{max-width:none;justify-content:flex-end}
+    .op-table .cell-comment,.op-table .param-badges{max-width:none;justify-content:flex-end;text-align:right}
     .op-table .param-badges{display:flex}
+    .op-table td > div:not(.cell-actions):not(.param-badges){text-align:right}
     /* Cartes encadrant */
     .demande-card .dc-actions .btn{flex:1;justify-content:center}
     .table-wrap{border:none}
@@ -501,7 +525,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // ⚠️ Collez ici l'URL /exec de votre déploiement Google Apps Script :
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9ksxZ4TpFQUaZhXbS2lXSyrPgRzDTaUtyINhLWIMw5dGAFY1X0Dc3aAm9OBjZlv_2sA/exec';
 
-const APP_VERSION = 'v1.5.0';
+const APP_VERSION = 'v1.5.1';
 const MAX_FILE_MB = 50;
 const ADMIN_CODE  = 'admin1234';   // mot de passe admin fixe (non modifiable)
 
@@ -613,10 +637,13 @@ async function loadOperateurs(){
 }
 function buildStudentLists(){
   const sel=document.getElementById('fprojet');
+  const prev=sel.value;
   sel.innerHTML = "<option value=''>— Choisir un projet —</option>" +
     projets.map(p=>"<option value='"+esc(p)+"'>"+esc(p)+"</option>").join('') +
     "<option value='__autre__'>Autre projet…</option>";
-  buildEtudiantOptions('');
+  // Rafraîchissement discret : si l'étudiant avait déjà choisi un projet, on ne lui fait pas tout reperdre
+  if(prev && [...sel.options].some(o=>o.value===prev)){ sel.value=prev; buildEtudiantOptions(prev); }
+  else buildEtudiantOptions('');
 }
 function onProjetChange(){
   const sel=document.getElementById('fprojet');
@@ -640,6 +667,8 @@ async function updateProjetProgress(){
 function buildEtudiantOptions(projet){
   const esel=document.getElementById('fetudiant');
   const autre=document.getElementById('fetudiant-autre');
+  const prev=esel.value;
+  const prevNom=document.getElementById('fnom').value, prevPrenom=document.getElementById('fprenom').value;
   autre.style.display='none';
   if(!projet){ esel.innerHTML="<option value=''>— Choisir d'abord un projet —</option>"; return; }
   if(projet==='__autre__'){ esel.innerHTML="<option value='__autre__'>Saisir un nom…</option>"; esel.value='__autre__'; autre.style.display='flex'; return; }
@@ -647,6 +676,11 @@ function buildEtudiantOptions(projet){
   esel.innerHTML="<option value=''>— Choisir votre nom —</option>"+
     list.map(e=>"<option value='"+esc(e.nom+'|'+e.prenom)+"'>"+esc(e.prenom+' '+e.nom)+"</option>").join('')+
     "<option value='__autre__'>Autre (non listé)…</option>";
+  // Rafraîchissement discret : on ne fait pas reperdre à l'étudiant son choix déjà fait
+  if(prev && [...esel.options].some(o=>o.value===prev)){
+    esel.value=prev;
+    if(prev==='__autre__'){ autre.style.display='flex'; document.getElementById('fnom').value=prevNom; document.getElementById('fprenom').value=prevPrenom; }
+  }
 }
 function onEtudiantChange(){
   document.getElementById('fetudiant-autre').style.display = document.getElementById('fetudiant').value==='__autre__' ? 'flex' : 'none';
@@ -712,9 +746,12 @@ function computeMetrics(model){
 }
 
 function buildMachines(){
-  document.getElementById('machines').innerHTML = MACHINES.map((m,i)=>
-    "<label class='machine-opt"+(i===0?' sel':'')+"' data-m='"+esc(m.nom)+"'>"+
-    "<input type='radio' name='machine' value='"+esc(m.nom)+"'"+(i===0?' checked':'')+" onchange='onMachineChange()'>"+
+  const prevSel=document.querySelector('input[name=machine]:checked');
+  const prev=prevSel?prevSel.value:null;
+  const keep = prev && MACHINES.some(m=>m.nom===prev) ? prev : (MACHINES[0]&&MACHINES[0].nom);
+  document.getElementById('machines').innerHTML = MACHINES.map((m)=>
+    "<label class='machine-opt"+(m.nom===keep?' sel':'')+"' data-m='"+esc(m.nom)+"'>"+
+    "<input type='radio' name='machine' value='"+esc(m.nom)+"'"+(m.nom===keep?' checked':'')+" onchange='onMachineChange()'>"+
     "<span class='mo-emoji'>"+esc(m.emoji||'⚙️')+"</span>"+
     "<span><span class='mo-name'>"+esc(m.nom)+"</span><br><span class='mo-desc'>"+esc(m.desc||(m.debit+' mm³/min'))+"</span></span></label>"
   ).join('');
@@ -909,17 +946,38 @@ function confirmEncNom(){
   closeOverlay('ovEncNom');
   showView('encadrant'); loadEncadrant();
 }
-async function loadEncadrant(){
+function captureEncComments(){
+  const map={};
+  document.querySelectorAll('.enc-comment').forEach(ta=>{
+    const m=ta.id.match(/^enccom-(\d+)$/); if(!m) return;
+    if(ta.value.trim()) map[m[1]]={val:ta.value, focused:document.activeElement===ta};
+  });
+  return map;
+}
+function restoreEncComments(saved){
+  Object.keys(saved).forEach(id=>{
+    const el=document.getElementById('enccom-'+id); if(!el) return;
+    el.value=saved[id].val;
+    if(saved[id].focused) el.focus();
+  });
+}
+let lastSigEncadrant=null;
+async function loadEncadrant(silent){
   const box=document.getElementById('encadrantResults');
-  box.innerHTML="<div class='loading'><span class='spinner'></span> Chargement…</div>";
+  if(!silent) box.innerHTML="<div class='loading'><span class='spinner'></span> Chargement…</div>";
   const {data,error}=await sb.from('demandes').select('*').eq('statut','en_attente').order('created_at');
   if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
   // Ne garder que les demandes des projets dont l'encadrant connecté est responsable
   // (projet sans encadrant défini → visible par tous, pour ne pas bloquer les demandes)
   const list=(data||[]).filter(d=>{ const encs=projetEncadrants[d.projet]; return !encs||encs.size===0||encs.has(currentEncadrantNom); });
-  if(!list.length){ box.innerHTML="<div class='empty'>Aucune demande en attente pour vos projets 🎉</div>"; return; }
+  if(!list.length){ lastSigEncadrant=null; box.innerHTML="<div class='empty'>Aucune demande en attente pour vos projets 🎉</div>"; return; }
+  const sig=list.map(demandeSig).join(';');
+  if(sig===lastSigEncadrant) return; // rien n'a changé : pas de ré-affichage
+  lastSigEncadrant=sig;
+  const savedComments=captureEncComments();
   list.forEach(d=>demandesById[d.id]=d);
-  box.innerHTML=list.map(d=>demandeCardEncadrant(d)).join('');
+  preserveScroll(box, ()=>{ box.innerHTML=list.map(d=>demandeCardEncadrant(d)).join(''); });
+  restoreEncComments(savedComments);
 }
 function demandeCardEncadrant(d){
   const opts=paramTags(d);
@@ -947,7 +1005,7 @@ async function validerDemande(id, ok){
   if(error){ showToast('❌ '+error.message); return; }
   if(ok){ const n=notifyOperateurs(data||{}); showToast(n>0?'✔️ Demande validée — '+n+' opérateur(s) notifié(s)':'✔️ Demande validée'); }
   else showToast('✖️ Demande refusée');
-  loadEncadrant();
+  loadEncadrant(true);
 }
 function notifyOperateurs(d){
   const cibles=operateurs.filter(o=>o.phone && o.apikey && (OPERATEURS_NOTIF===null || OPERATEURS_NOTIF.includes(o.name)));
@@ -988,12 +1046,44 @@ async function confirmRenameProjet(){
 //  OPÉRATEUR
 // ─────────────────────────────────────────────────────────────────────────
 function openOperateur(){ showView('operateur'); loadOperateur(); }
+// Préserve la position de défilement d'un conteneur pendant un ré-rendu (rafraîchissement discret)
+function preserveScroll(el, fn){
+  const y=el?el.scrollTop:0, wy=window.scrollY;
+  fn();
+  if(el) el.scrollTop=y;
+  window.scrollTo(window.scrollX, wy);
+}
+// Capture les durées (h/min) en cours de saisie par l'opérateur, pour ne pas les écraser au rafraîchissement
+function captureDureeInputs(){
+  const map={};
+  document.querySelectorAll('.op-duree').forEach(inp=>{
+    const m=inp.id.match(/^duree([hm])-(\d+)$/); if(!m) return;
+    const id=m[2]; map[id]=map[id]||{}; map[id][m[1]]=inp.value;
+    map[id].focused = (document.activeElement===inp) ? m[1] : (map[id].focused||null);
+  });
+  return map;
+}
+function restoreDureeInputs(saved){
+  Object.keys(saved).forEach(id=>{
+    const s=saved[id];
+    const hInp=document.getElementById('dureeh-'+id), mInp=document.getElementById('duree'+'m-'+id);
+    if(hInp && s.h!==undefined) hInp.value=s.h;
+    if(mInp && s.m!==undefined) mInp.value=s.m;
+    if(s.focused){ const el=document.getElementById('duree'+s.focused+'-'+id); if(el){ el.focus(); const v=el.value; el.value=''; el.value=v; } }
+  });
+}
+let lastSigOperateur=null;
+function demandeSig(d){ return [d.id,d.statut,d.operateur_nom,d.encadrant_commentaire,d.en_cours_at,d.duree_reelle_min,d.imprime_at,d.encadrant_nom,d.projet].join('|'); }
 async function loadOperateur(){
   const box=document.getElementById('operateurResults');
   const {data,error}=await sb.from('demandes').select('*').in('statut',['validee','en_cours','imprimee']).order('created_at',{ascending:false});
   if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
-  if(!data.length){ box.innerHTML="<div class='empty'>Aucune impression à traiter pour le moment.</div>"; return; }
+  if(!data.length){ lastSigOperateur=null; box.innerHTML="<div class='empty'>Aucune impression à traiter pour le moment.</div>"; return; }
   data.forEach(d=>demandesById[d.id]=d);
+  const sig=data.map(demandeSig).join(';');
+  if(sig===lastSigOperateur){ tickCountdowns(); return; } // rien n'a changé : rafraîchissement discret = aucun ré-affichage
+  lastSigOperateur=sig;
+  const savedDuree=captureDureeInputs();
   let rows=data.map(d=>{
     const opts=paramTags(d);
     let params=machineLabel(d.machine)+"<br><span style='color:var(--muted)'>"+esc(tempsLabel(d))+"</span><div class='param-badges'>"+
@@ -1012,7 +1102,7 @@ async function loadOperateur(){
       "<button class='btn btn-green' onclick='majStatut("+d.id+",\"imprimee\")'>✅ Terminée</button>"+
       "<button class='btn btn-nav' onclick='majStatut("+d.id+",\"validee\")' title='Remettre en attente'>↩︎</button>"+
       "</div>";
-    return "<tr>"+
+    return "<tr class='st-"+d.statut+"'>"+
       "<td data-label='Projet'><b>"+esc(d.projet)+"</b><br><span style='color:var(--muted);font-size:.78rem'>"+esc(d.fichier_nom)+"</span></td>"+
       "<td data-label='N°'>"+(d.numero||'?')+"</td>"+
       "<td data-label='Étudiant'>"+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</td>"+
@@ -1024,7 +1114,11 @@ async function loadOperateur(){
       "<td data-label='Actions'>"+act+"</td>"+
       "</tr>";
   }).join('');
-  box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrant</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+  const wrap=box.querySelector('.table-wrap');
+  preserveScroll(wrap, ()=>{
+    box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrant</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+  });
+  restoreDureeInputs(savedDuree);
   tickCountdowns();
 }
 async function majStatut(id, statut){
@@ -1145,23 +1239,28 @@ async function exporterCSV(){
 // ─────────────────────────────────────────────────────────────────────────
 function buildSuiviLists(){
   const sp=document.getElementById('sprojet');
+  const prev=sp.value;
   sp.innerHTML="<option value=''>— Choisir un projet —</option>"+projets.map(p=>"<option value='"+esc(p)+"'>"+esc(p)+"</option>").join('');
-  onSuiviProjet();
+  if(prev && [...sp.options].some(o=>o.value===prev)){ sp.value=prev; onSuiviProjet(); }
+  else onSuiviProjet();
 }
 function onSuiviProjet(){
   const projet=document.getElementById('sprojet').value;
   const es=document.getElementById('setudiant');
+  const prev=es.value;
   if(!projet){ es.innerHTML="<option value=''>— Choisir d'abord un projet —</option>"; return; }
   const list=etudiants.filter(e=>e.projet===projet).sort((a,b)=>(a.nom+a.prenom).localeCompare(b.nom+b.prenom));
   es.innerHTML="<option value=''>— Choisir votre nom —</option>"+
     list.map(e=>"<option value='"+esc(e.nom+'|'+e.prenom)+"'>"+esc(e.prenom+' '+e.nom)+"</option>").join('');
+  if(prev && [...es.options].some(o=>o.value===prev)) es.value=prev;
 }
-async function rechercherSuivi(){
+let lastSigSuivi=null;
+async function rechercherSuivi(silent){
   const projet=document.getElementById('sprojet').value;
   const etuVal=document.getElementById('setudiant').value;
   const box=document.getElementById('suiviResults');
-  if(!projet){ box.innerHTML="<div class='empty'>Choisissez au moins votre projet.</div>"; return; }
-  box.innerHTML="<div class='loading'><span class='spinner'></span> Recherche…</div>";
+  if(!projet){ if(!silent) box.innerHTML="<div class='empty'>Choisissez au moins votre projet.</div>"; return; }
+  if(!silent) box.innerHTML="<div class='loading'><span class='spinner'></span> Recherche…</div>";
   // Barre de progression du projet (visible par tous les étudiants du groupe)
   const {count}=await sb.from('demandes').select('id',{count:'exact',head:true}).eq('projet',projet);
   const n=count||0, lim=projetLimite(projet), pct=Math.min(100,lim>0?Math.round(n/lim*100):0), bgSize=pct>0?Math.round(10000/pct):100, over=n>=lim;
@@ -1172,8 +1271,11 @@ async function rechercherSuivi(){
   if(etuVal){ const p=etuVal.split('|'); q=q.ilike('etudiant_nom',p[0]||'').ilike('etudiant_prenom',p[1]||''); }
   const {data,error}=await q;
   if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
-  if(!data.length){ box.innerHTML=progress+"<div class='empty'>Aucune demande pour ce projet.</div>"; return; }
-  box.innerHTML=progress+data.map(d=>{
+  if(!data.length){ lastSigSuivi=null; box.innerHTML=progress+"<div class='empty'>Aucune demande pour ce projet.</div>"; return; }
+  const sig=n+'|'+data.map(demandeSig).join(';');
+  if(sig===lastSigSuivi){ tickCountdowns(); return; } // rien n'a changé : pas de ré-affichage
+  lastSigSuivi=sig;
+  const html=progress+data.map(d=>{
     const end=countdownEnd(d);
     return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>🗂️ "+esc(d.projet)+" — "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</div>"+
@@ -1185,6 +1287,7 @@ async function rechercherSuivi(){
     "<div style='text-align:right'>"+badge(d.statut)+(end?"<div class='countdown' data-end='"+end+"'></div>":"")+"</div>"+
     "</div></div>";
   }).join('');
+  preserveScroll(box, ()=>{ box.innerHTML=html; });
   tickCountdowns();
 }
 
@@ -1250,17 +1353,71 @@ async function saveAdmin(){
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-//  REALTIME
+//  RAFRAÎCHISSEMENT — discret (sans reset des saisies en cours, sans « flash »)
+//  et intelligent (rien ne se redessine si le contenu n'a pas réellement changé)
 // ─────────────────────────────────────────────────────────────────────────
-function subscribeRealtime(){
-  sb.channel('demandes-live').on('postgres_changes',{event:'*',schema:'public',table:'demandes'},()=>{
-    const active=document.querySelector('.view.active');
-    if(!active) return;
-    if(active.id==='view-operateur') loadOperateur();
-    else if(active.id==='view-encadrant') loadEncadrant();
-    else if(active.id==='view-suivi' && document.getElementById('suiviResults').innerHTML.trim()) rechercherSuivi();
-  }).subscribe();
+function debounce(fn, ms){ let t=null; return function(...a){ clearTimeout(t); t=setTimeout(()=>fn.apply(null,a), ms); }; }
+
+// Rafraîchit silencieusement la seule vue actuellement affichée (pas les autres, inutile)
+function refreshActiveView(){
+  const active=document.querySelector('.view.active');
+  if(!active) return;
+  if(active.id==='view-operateur') loadOperateur();
+  else if(active.id==='view-encadrant') loadEncadrant(true);
+  else if(active.id==='view-suivi' && document.getElementById('sprojet').value) rechercherSuivi(true);
 }
+const debouncedRefresh = debounce(refreshActiveView, 350);
+
+// Rafraîchit en silence les listes de référence (étudiants/projets, opérateurs, paramètres) :
+// n'affecte que les données + les sélecteurs (avec préservation du choix en cours), jamais
+// les panneaux d'administration ouverts (pour ne pas effacer une saisie en cours).
+async function refreshReferenceData(kind){
+  if(kind==='etudiants'){ await loadEtudiants(); buildSuiviLists(); }
+  else if(kind==='operateurs'){ await loadOperateurs(); }
+  else if(kind==='parametres'){
+    await loadParams();
+    if(!document.getElementById('ovAdmin').classList.contains('open')) buildMachines();
+    updateProjetProgress();
+  }
+}
+const debouncedRefEtud = debounce(()=>refreshReferenceData('etudiants'), 500);
+const debouncedRefOps  = debounce(()=>refreshReferenceData('operateurs'), 500);
+const debouncedRefPrm  = debounce(()=>refreshReferenceData('parametres'), 500);
+
+let realtimeChannel=null, realtimeRetryMs=2000;
+function subscribeRealtime(){
+  if(realtimeChannel){ try{ sb.removeChannel(realtimeChannel); }catch(e){} }
+  realtimeChannel = sb.channel('impression3d-live')
+    .on('postgres_changes',{event:'*',schema:'public',table:'demandes'}, debouncedRefresh)
+    .on('postgres_changes',{event:'*',schema:'public',table:'etudiants'}, debouncedRefEtud)
+    .on('postgres_changes',{event:'*',schema:'public',table:'operateurs'}, debouncedRefOps)
+    .on('postgres_changes',{event:'*',schema:'public',table:'parametres'}, debouncedRefPrm)
+    .subscribe((status)=>{
+      if(status==='SUBSCRIBED'){ realtimeRetryMs=2000; }
+      else if(status==='CHANNEL_ERROR' || status==='TIMED_OUT' || status==='CLOSED'){
+        // Reconnexion discrète en arrière-plan (backoff), sans notifier l'utilisateur
+        setTimeout(()=>{ if(document.visibilityState==='visible') subscribeRealtime(); }, realtimeRetryMs);
+        realtimeRetryMs=Math.min(realtimeRetryMs*1.6, 30000);
+      }
+    });
+}
+
+// Filet de sécurité : si un événement realtime est manqué (veille, reconnexion réseau…),
+// on resynchronise silencieusement dès que l'onglet redevient visible, puis à intervalle large.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){ refreshActiveView(); refreshReferenceData('parametres'); }
+});
+setInterval(()=>{ if(document.visibilityState==='visible') refreshActiveView(); }, 60000);
+
+// Retour arrière/avant du navigateur restauré depuis le cache (bfcache) : l'espace encadrant,
+// opérateur et admin ne doivent JAMAIS rester accessibles sans ré-identification. On efface
+// l'identité en cours, referme toute fenêtre de code/gestion, et revient à l'écran de dépôt.
+window.addEventListener('pageshow', function(e){
+  if(!e.persisted) return;
+  currentEncadrantNom=''; currentOperateurNom=''; currentRole=null;
+  ['ovCode','ovEncNom','ovOperateur','ovAdmin','ovRenameProj','ovLimites','ovExport','ovViewer'].forEach(closeOverlay);
+  showView('nouvelle');
+});
 
 // ─────────────────────────────────────────────────────────────────────────
 //  INITIALISATION
