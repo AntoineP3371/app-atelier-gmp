@@ -328,8 +328,10 @@
   <!-- ============ VUE ENCADRANT ============ -->
   <section id="view-encadrant" class="view">
     <div class="card">
-      <h2>Validation des demandes — <span id="encNomLabel"></span></h2>
-      <div class="sub">Validez ou refusez les demandes en attente.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><h2>Validation des demandes — <span id="encNomLabel"></span></h2><div class="sub">Validez ou refusez les demandes en attente.</div></div>
+        <button class="btn btn-ghost" onclick="openRenameProjet()">✏️ Renommer un projet</button>
+      </div>
       <div id="encadrantResults"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
     </div>
   </section>
@@ -445,6 +447,20 @@
   </div>
 </div>
 
+<!-- ============ MODALE : renommer un projet (encadrant) ============ -->
+<div class="overlay" id="ovRenameProj">
+  <div class="modal">
+    <h2>✏️ Renommer un projet</h2>
+    <div class="meta">Renomme le projet dans la liste étudiants ET dans toutes les demandes associées. Seuls vos projets sont proposés.</div>
+    <div class="form-row"><div class="form-group"><label>Projet actuel</label><select id="rnAncien"></select></div></div>
+    <div class="form-row"><div class="form-group"><label>Nouveau nom</label><input type="text" id="rnNouveau" placeholder="Nouveau nom du projet" autocomplete="off"></div></div>
+    <div class="modal-actions">
+      <button class="btn btn-close" onclick="closeOverlay('ovRenameProj')">Annuler</button>
+      <button class="btn btn-ok" onclick="confirmRenameProjet()">Renommer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MODALE : export CSV (opérateur) ============ -->
 <div class="overlay" id="ovExport">
   <div class="modal">
@@ -485,7 +501,7 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 // ⚠️ Collez ici l'URL /exec de votre déploiement Google Apps Script :
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9ksxZ4TpFQUaZhXbS2lXSyrPgRzDTaUtyINhLWIMw5dGAFY1X0Dc3aAm9OBjZlv_2sA/exec';
 
-const APP_VERSION = 'v1.4.0';
+const APP_VERSION = 'v1.5.0';
 const MAX_FILE_MB = 50;
 const ADMIN_CODE  = 'admin1234';   // mot de passe admin fixe (non modifiable)
 
@@ -498,6 +514,7 @@ let etudiants = [];          // [{nom,prenom,projet,enc1,enc2}]
 let operateurs = [];         // [{name,code}]
 let projets = [];            // liste distincte
 let encadrantsList = [];     // liste distincte des noms d'encadrants
+let projetEncadrants = {};   // { projet: Set(noms encadrants) }
 let PARAMS = {};             // paramètres depuis la table 'parametres'
 let MACHINES = [];           // machines proposées (gérées par l'admin)
 let OPERATEURS_NOTIF = null; // noms d'opérateurs à notifier (null = tous ceux configurés)
@@ -582,7 +599,11 @@ async function loadEtudiants(){
   const {data,error} = await sb.from('etudiants').select('*').order('projet').order('nom');
   etudiants = (!error && data) ? data.map(r=>({nom:r.nom||'',prenom:r.prenom||'',projet:r.projet||'',enc1:r.encadrant1||'',enc2:r.encadrant2||''})) : [];
   projets = [...new Set(etudiants.map(e=>e.projet).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const encs=[]; etudiants.forEach(e=>{ if(e.enc1)encs.push(e.enc1); if(e.enc2)encs.push(e.enc2); });
+  const encs=[]; projetEncadrants={};
+  etudiants.forEach(e=>{
+    if(e.enc1)encs.push(e.enc1); if(e.enc2)encs.push(e.enc2);
+    if(e.projet){ const s=projetEncadrants[e.projet]||(projetEncadrants[e.projet]=new Set()); if(e.enc1)s.add(e.enc1); if(e.enc2)s.add(e.enc2); }
+  });
   encadrantsList=[...new Set(encs)].sort((a,b)=>a.localeCompare(b));
   buildStudentLists();
 }
@@ -893,9 +914,12 @@ async function loadEncadrant(){
   box.innerHTML="<div class='loading'><span class='spinner'></span> Chargement…</div>";
   const {data,error}=await sb.from('demandes').select('*').eq('statut','en_attente').order('created_at');
   if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
-  if(!data.length){ box.innerHTML="<div class='empty'>Aucune demande en attente 🎉</div>"; return; }
-  data.forEach(d=>demandesById[d.id]=d);
-  box.innerHTML=data.map(d=>demandeCardEncadrant(d)).join('');
+  // Ne garder que les demandes des projets dont l'encadrant connecté est responsable
+  // (projet sans encadrant défini → visible par tous, pour ne pas bloquer les demandes)
+  const list=(data||[]).filter(d=>{ const encs=projetEncadrants[d.projet]; return !encs||encs.size===0||encs.has(currentEncadrantNom); });
+  if(!list.length){ box.innerHTML="<div class='empty'>Aucune demande en attente pour vos projets 🎉</div>"; return; }
+  list.forEach(d=>demandesById[d.id]=d);
+  box.innerHTML=list.map(d=>demandeCardEncadrant(d)).join('');
 }
 function demandeCardEncadrant(d){
   const opts=paramTags(d);
@@ -936,6 +960,28 @@ function notifyOperateurs(d){
     fetch(url,{mode:'no-cors'}).catch(()=>{});
   });
   return cibles.length;
+}
+function openRenameProjet(){
+  const mes=Object.keys(projetEncadrants).filter(p=>projetEncadrants[p].has(currentEncadrantNom)).sort((a,b)=>a.localeCompare(b));
+  if(!mes.length){ showToast('Aucun projet à renommer pour vous'); return; }
+  document.getElementById('rnAncien').innerHTML=mes.map(p=>"<option value=\""+esc(p)+"\">"+esc(p)+"</option>").join('');
+  document.getElementById('rnNouveau').value='';
+  openOverlay('ovRenameProj');
+}
+async function confirmRenameProjet(){
+  const ancien=document.getElementById('rnAncien').value;
+  const nouveau=document.getElementById('rnNouveau').value.trim();
+  if(!ancien||!nouveau){ showToast('⚠️ Indiquez le nouveau nom'); return; }
+  if(ancien===nouveau){ showToast('Nom identique'); return; }
+  busy(true,'Renommage…');
+  const e1=await sb.from('etudiants').update({projet:nouveau}).eq('projet',ancien);
+  if(e1.error){ busy(false); showToast('❌ '+e1.error.message); return; }
+  const e2=await sb.from('demandes').update({projet:nouveau}).eq('projet',ancien);
+  busy(false);
+  if(e2.error){ showToast('❌ Étudiants OK, demandes : '+e2.error.message); }
+  else showToast('✅ Projet « '+nouveau+' » mis à jour');
+  closeOverlay('ovRenameProj');
+  await loadEtudiants(); buildSuiviLists(); loadEncadrant();
 }
 
 // ─────────────────────────────────────────────────────────────────────────

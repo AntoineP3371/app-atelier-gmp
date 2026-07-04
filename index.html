@@ -251,24 +251,60 @@ async function saveOperateurs(){
 
 // ══════════════ ÉTUDIANTS / PROJETS ══════════════
 let _etudPending=null;
+let _etudList=[];
+function pvDownloadEtud(){
+  const rows=[["Nom","Prenom","Projet","Encadrant1","Encadrant2"]];
+  (_etudList||[]).forEach(e=>rows.push([e.nom||'',e.prenom||'',e.projet||'',e.encadrant1||'',e.encadrant2||'']));
+  const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:18},{wch:18},{wch:25},{wch:20},{wch:20}];
+  XLSX.utils.book_append_sheet(wb,ws,"Etudiants");
+  XLSX.writeFile(wb,"liste_etudiants.xlsx");
+}
+async function pvRenameProjet(){
+  const ancien=document.getElementById('rpAncien').value;
+  const nouveau=document.getElementById('rpNouveau').value.trim();
+  if(!ancien||!nouveau){ pvToast('⚠️ Choisissez un projet et un nouveau nom'); return; }
+  if(ancien===nouveau){ pvToast('Nom identique'); return; }
+  if(!confirm('Renommer « '+ancien+' » en « '+nouveau+' » ?\nMet à jour la liste étudiants et toutes les demandes.')) return;
+  pvToast('✏️ Renommage…');
+  const e1=await sb.from('etudiants').update({projet:nouveau}).eq('projet',ancien);
+  if(e1.error){ pvToast('❌ '+e1.error.message); return; }
+  const e2=await sb.from('demandes').update({projet:nouveau}).eq('projet',ancien);
+  if(e2.error){ pvToast('❌ Étudiants OK, mais demandes : '+e2.error.message); }
+  else pvToast('✅ Projet renommé');
+  openEtudiants();
+}
 async function openEtudiants(){
   pvOpen("<h2>👨‍🎓 Étudiants / Projets</h2><div class='pv-meta'>Chargement…</div>");
   const {data,error}=await sb.from('etudiants').select('*').order('projet').order('nom');
   const et=(!error&&data)?data:[];
-  const projets=[...new Set(et.map(e=>e.projet).filter(Boolean))];
+  _etudList=et;
+  const projets=[...new Set(et.map(e=>e.projet).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   let list;
   if(!et.length){ list="<div class='pv-count'>Aucun étudiant importé.</div>"; }
   else{
     list="<div class='pv-count'>"+et.length+" étudiant(s) — "+projets.length+" projet(s)</div>"+
-      "<div class='pv-tablewrap'><table class='pv-table'><thead><tr><th>Nom</th><th>Prénom</th><th>Projet</th></tr></thead><tbody>"+
-      et.map(e=>"<tr><td>"+esc(e.nom)+"</td><td>"+esc(e.prenom)+"</td><td>"+esc(e.projet)+"</td></tr>").join('')+
+      "<div class='pv-tablewrap'><table class='pv-table'><thead><tr><th>Nom</th><th>Prénom</th><th>Projet</th><th>Encadrant 1</th><th>Encadrant 2</th></tr></thead><tbody>"+
+      et.map(e=>"<tr><td>"+esc(e.nom)+"</td><td>"+esc(e.prenom)+"</td><td>"+esc(e.projet)+"</td><td>"+esc(e.encadrant1||'')+"</td><td>"+esc(e.encadrant2||'')+"</td></tr>").join('')+
       "</tbody></table></div>";
   }
+  const renameBlock = projets.length ?
+    "<div style='font-weight:700;font-size:.85rem;margin:14px 0 4px'>✏️ Renommer un projet</div>"+
+    "<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center'>"+
+      "<select id='rpAncien' class='pv-input' style='flex:1;min-width:150px'>"+projets.map(p=>"<option value=\""+esc(p)+"\">"+esc(p)+"</option>").join('')+"</select>"+
+      "<span>→</span>"+
+      "<input id='rpNouveau' class='pv-input' style='flex:1;min-width:150px' placeholder='Nouveau nom'>"+
+      "<button class='pv-btn ok' onclick='pvRenameProjet()'>Renommer</button>"+
+    "</div>"+
+    "<div class='pv-meta' style='margin-top:4px'>Met à jour la liste étudiants ET toutes les demandes d'impression du projet.</div>"
+    : "";
   pvOpen(
     "<h2>👨‍🎓 Étudiants / Projets</h2>"+
     "<div class='pv-meta'>Liste commune à Réservation Machines et Impression 3D.</div>"+
     list+
-    "<div style='font-weight:700;font-size:.85rem;margin:12px 0 4px'>Importer une liste (.xlsx)</div>"+
+    (et.length?"<div style='margin-top:6px'><button class='pv-btn' onclick='pvDownloadEtud()'>⬇ Télécharger la liste (xlsx)</button></div>":"")+
+    renameBlock+
+    "<div style='font-weight:700;font-size:.85rem;margin:14px 0 4px'>Importer une liste (.xlsx)</div>"+
     "<div class='pv-drop' id='etudDrop' onclick=\"document.getElementById('etudFile').click()\">📂 Cliquez ou glissez un fichier .xlsx ici</div>"+
     "<input type='file' id='etudFile' accept='.xlsx,.xls' style='display:none' onchange='pvParseEtud(this.files[0])'>"+
     "<div style='display:flex;gap:8px;flex-wrap:wrap'><button class='pv-btn' onclick='pvTemplate()'>⬇ Télécharger le modèle</button>"+
