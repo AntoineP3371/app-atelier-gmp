@@ -43,7 +43,10 @@
   .carousel-banner-subtitle{font-size:.85rem;color:var(--muted)}
   .carousel-banner-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}
   .carousel-banner-right .carousel-qr{margin-bottom:0;text-align:right}
-  .carousel-banner-right .carousel-qr img{width:180px;height:180px;display:block}
+  .carousel-banner-right .carousel-qr img{width:240px;height:240px;display:block}
+  .carousel-close-left{align-self:flex-start;flex-shrink:0}
+  /* Le chatbot ne doit pas s'afficher par-dessus le carrousel plein écran */
+  body.carousel-open #chatFab,body.carousel-open #chatPanel{display:none!important}
   header .icon{height:56px;width:auto;background:none;border-radius:0;display:flex;align-items:center;justify-content:center;flex-shrink:0}
   header .icon img{height:56px;width:auto;object-fit:contain;display:block}
   header .icon svg{height:56px;width:56px;color:var(--primary);display:block}
@@ -942,9 +945,9 @@ function openModal(html,fullscreen){
   var f=document.querySelector("#modal input");
   if(f) setTimeout(()=>f.focus(),80);
 }
-function closeModal(){ document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); stopCarousel(); openModalName=null; sessionStorage.removeItem('pendingModal'); }
+function closeModal(){ document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); document.body.classList.remove('carousel-open'); stopCarousel(); openModalName=null; sessionStorage.removeItem('pendingModal'); }
 function stopCarousel(){ if(carouselTimer){ clearInterval(carouselTimer); carouselTimer=null; } }
-function startMachineCarousel(){ stopCarousel(); if(!machines.length){ alert("Aucune machine."); return; } openModalName='carouselview'; carouselIndex=0; openFullScreenCarouselPage(); carouselTimer=setInterval(nextCarouselPage,5000); }
+function startMachineCarousel(){ stopCarousel(); if(!machines.length){ alert("Aucune machine."); return; } openModalName='carouselview'; carouselIndex=0; document.body.classList.add('carousel-open'); openFullScreenCarouselPage(); carouselTimer=setInterval(nextCarouselPage,5000); }
 function getCarouselPages(){
   if(carouselPages && carouselPages.length>0) return carouselPages;
   var pages=[]; for(var i=0;i<machines.length;i+=3){ pages.push(machines.slice(i,i+3)); } return pages;
@@ -958,17 +961,16 @@ function buildFullscreenMachineAgenda(){
   var page=pages[carouselIndex]||[];
   var days=getTwoWeekDays();
   var start=days[0],end=days[days.length-1];
-  var qrHtml="<div class='carousel-qr'><img src='"+(window.QR_DATA_URL||'')+"' style='width:180px;height:180px;display:block'></div>";
+  var qrHtml="<div class='carousel-qr'><img src='"+(window.QR_DATA_URL||'')+"' style='width:240px;height:240px;display:block'></div>";
   var html=
     "<div class='carousel-banner'>"+
+      "<button class='btn btn-close carousel-close-left' onclick='closeModal()'>✕ Fermer</button>"+
       "<div class='carousel-banner-logo'><img src='"+BM_LOGO_B64+"' style='height:160px;max-width:320px;object-fit:contain;display:block'></div>"+
       "<div class='carousel-banner-info'>"+
         "<div class='carousel-banner-title'>Planning de réservations des machines</div>"+
         "<div class='carousel-banner-subtitle'>"+start.toLocaleDateString('fr-FR')+" – "+end.toLocaleDateString('fr-FR')+" &nbsp;·&nbsp; page "+(carouselIndex+1)+" / "+pages.length+"</div>"+
       "</div>"+
-      "<div class='carousel-banner-right'>"+qrHtml+
-        "<button class='btn btn-close' onclick='closeModal()'>✕ Fermer</button>"+
-      "</div>"+
+      "<div class='carousel-banner-right'>"+qrHtml+"</div>"+
     "</div>"+
     "<div class='table-wrap'>"+buildMultiMachineAgendaTable(page,days)+"</div>"+
     "<div style='font-size:.78rem;color:var(--muted);margin-top:10px;text-align:right'>Lecture seule · actualisation automatique</div>";
