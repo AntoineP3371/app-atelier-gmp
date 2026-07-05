@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Atelier GMP — Services</title>
+<title>Atelier GMP</title>
+<meta name="apple-mobile-web-app-title" content="Atelier GMP">
+<meta name="application-name" content="Atelier GMP">
 <meta name="theme-color" content="#0083ba">
 <link rel="icon" type="image/png" href="usinage/favicon-64.png">
 <link rel="apple-touch-icon" href="usinage/icon-192.png">
@@ -172,7 +174,10 @@
 // ── Gestion unifiée (opérateurs + étudiants) directement dans le portail ──
 const SUPABASE_URL  = 'https://ggmlfbxppgeivfvlxxrj.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdnbWxmYnhwcGdlaXZmdmx4eHJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNDY5NTIsImV4cCI6MjA5NzkyMjk1Mn0.HvPE2ewB8gFgVzj-xAb1YBxFfn8hTEwOwQLDfF1vgT0';
-const ADMIN_PW = 'admin1234';
+// Empreinte SHA-256 du mot de passe admin — le mot de passe en clair n'apparaît pas dans le code.
+// (Camouflage contre la lecture du code source ; ce n'est pas une protection forte.)
+const ADMIN_PW_HASH = 'ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270';
+async function sha256hex(s){ const b=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -188,15 +193,15 @@ function portalAuth(which){
   _pvPending=which;
   pvOpen(
     "<h2>🔐 Administration</h2>"+
-    "<div class='pv-meta'>Entrez le mot de passe administrateur.</div>"+
+    "<div class='pv-meta'>Entrez le mot de passe administrateur</div>"+
     "<input type='password' class='pv-input' id='pvPw' placeholder='mot de passe' onkeydown=\"if(event.key==='Enter')pvCheckPw()\">"+
     "<div class='pv-err' id='pvPwErr'>Mot de passe incorrect.</div>"+
     "<div class='pv-actions'><button class='pv-btn' onclick='pvClose()'>Annuler</button><button class='pv-btn ok' onclick='pvCheckPw()'>Se connecter</button></div>"
   );
   setTimeout(()=>{ const i=document.getElementById('pvPw'); if(i)i.focus(); },50);
 }
-function pvCheckPw(){
-  if(document.getElementById('pvPw').value===ADMIN_PW){ openManager(_pvPending); }
+async function pvCheckPw(){
+  if(await sha256hex(document.getElementById('pvPw').value)===ADMIN_PW_HASH){ openManager(_pvPending); }
   else document.getElementById('pvPwErr').classList.add('show');
 }
 function openManager(which){ if(which==='operateurs') openOperateurs(); else openEtudiants(); }
