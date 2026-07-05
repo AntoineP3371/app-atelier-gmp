@@ -1158,8 +1158,10 @@ async function loadOperateur(){
     const fileInfo = (d.statut==='validee') ? "<div style='font-size:.72rem;color:var(--muted);margin-top:2px'>File : "+(pos+1)+" / "+file.length+"</div>" : "";
     const statutCell=badge(d.statut)+(d.operateur_nom?"<div style='font-size:.72rem;color:var(--muted);margin-top:2px'>🛠️ "+esc(d.operateur_nom)+"</div>":"")+fileInfo+(end?"<div class='countdown' data-end='"+end+"'></div>":"");
     // Durée réelle éditable + Lancer (démarre le minuteur) ; états modifiables à tout moment
-    const dureeVal=d.duree_reelle_min||d.temps_estime_min||0;
-    const dh=Math.floor(dureeVal/60), dm=dureeVal%60;
+    // Cases h/min : vides tant que l'opérateur n'a pas saisi de durée réelle
+    // (on ne pré-remplit PAS avec le temps estimé, pour éviter un lancement « automatique »).
+    const dureeVal=d.duree_reelle_min||0;
+    const dh=dureeVal>0?Math.floor(dureeVal/60):'', dm=dureeVal>0?dureeVal%60:'';
     // Réordonnancement de la file (uniquement pour les demandes validées)
     let queueBtns="";
     if(d.statut==='validee'){
