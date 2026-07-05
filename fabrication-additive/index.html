@@ -96,6 +96,7 @@
   .machine-opt.sel{border-color:var(--primary);background:var(--primary-light)}
   .machine-opt input{display:none}
   .machine-opt .mo-emoji{font-size:1.5rem}
+  .machine-opt .mo-logo{height:30px;width:auto;max-width:64px;object-fit:contain;display:block;flex-shrink:0}
   .machine-opt .mo-name{font-weight:700}
   .machine-opt .mo-desc{font-size:.75rem;color:var(--muted)}
   /* Options pièce */
@@ -623,6 +624,8 @@ const STATUT_LABEL = {
 };
 function badge(st){ return "<span class='badge "+st+"'>"+esc(STATUT_LABEL[st]||st)+"</span>"; }
 function machineLabel(m){ const mm=machineByNom(m); return mm ? (mm.emoji+' '+mm.nom) : (m||'—'); }
+// Logo de marque pour le sélecteur de machine (ratio préservé via CSS). null → on garde l'emoji.
+function machineLogo(m){ const n=((m&&m.nom)||'').toLowerCase(); if(n.indexOf('bambu')>-1) return '../bambulab.webp'; if(n.indexOf('markforged')>-1) return '../markforged.png'; return null; }
 function tempsCategorie(min){ if(!min||min<=0) return 'moins de 3h'; if(min<180) return 'moins de 3h'; if(min<360) return 'moins de 6h'; if(min<720) return 'moins de 12h'; return 'plus de 12h'; }
 function tempsLabel(d){ return d.temps_categorie || tempsCategorie(d.temps_estime_min); }
 function slugProjet(p){ return (p||'projet').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'projet'; }
@@ -801,7 +804,7 @@ function buildMachines(){
   document.getElementById('machines').innerHTML = MACHINES.map((m)=>
     "<label class='machine-opt"+(m.nom===keep?' sel':'')+"' data-m='"+esc(m.nom)+"'>"+
     "<input type='radio' name='machine' value='"+esc(m.nom)+"'"+(m.nom===keep?' checked':'')+" onchange='onMachineChange()'>"+
-    "<span class='mo-emoji'>"+esc(m.emoji||'⚙️')+"</span>"+
+    (machineLogo(m)?"<img class='mo-logo' src='"+machineLogo(m)+"' alt='"+esc(m.nom)+"'>":"<span class='mo-emoji'>"+esc(m.emoji||'⚙️')+"</span>")+
     "<span><span class='mo-name'>"+esc(m.nom)+"</span><br><span class='mo-desc'>"+esc(m.desc||(m.debit+' mm³/min'))+"</span></span></label>"
   ).join('');
 }
