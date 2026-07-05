@@ -163,7 +163,7 @@
   </div>
 
   <footer>Atelier GMP — IUT Bordeaux</footer>
-  <div class="site-version">v2.2.1</div>
+  <div class="site-version">v2.3.0</div>
 
 <div class="pv-overlay" id="pvOverlay"><div class="pv-modal" id="pvModal"></div></div>
 <div class="pv-toast" id="pvToast"></div>
@@ -226,7 +226,7 @@ function opRow(name,phone,apikey,code){
   return "<div class='op-row'>"+
     "<div class='r'><input class='op-name' value=\""+esc(name)+"\" placeholder=\"Nom de l'opérateur\"><button class='op-x' onclick=\"this.closest('.op-row').remove()\">✕</button></div>"+
     "<div class='r'><input class='op-phone' value=\""+esc(phone)+"\" placeholder='📱 +336… (WhatsApp)'><input class='op-key' value=\""+esc(apikey)+"\" placeholder='Clé API CallMeBot'><button class='op-test' onclick='pvTestWhatsapp(this)'>▶ Test</button></div>"+
-    "<div class='r'><label style='font-size:.8rem;color:var(--muted);white-space:nowrap'>Code validation :</label><input class='op-code' value=\""+esc(code)+"\" maxlength='4' inputmode='numeric' placeholder='4 chiffres'></div>"+
+    "<div class='r'><label style='font-size:.8rem;color:var(--muted);white-space:nowrap'>Code validation :</label><input class='op-code' value=\""+esc(code)+"\" maxlength='4' inputmode='numeric' placeholder='4 chiffres'"+(code?'':" style='border-color:var(--danger)'")+">"+(code?'':"<span style='font-size:.76rem;color:var(--danger)'>⚠️ sans code = ne peut pas valider</span>")+"</div>"+
   "</div>";
 }
 function addOpRow(){ document.getElementById('opList').insertAdjacentHTML('beforeend', opRow('','','','')); }
@@ -249,9 +249,11 @@ async function saveOperateurs(){
   });
   if(!arr.length){ pvToast('⚠️ Ajoutez au moins un opérateur'); return; }
   pvToast('💾 Enregistrement…');
+  const backup=(await sb.from('operateurs').select('*')).data||[];
   const {error:delErr}=await sb.from('operateurs').delete().neq('name','__never__');
   if(delErr){ pvToast('❌ '+delErr.message); return; }
-  if(arr.length){ const {error:insErr}=await sb.from('operateurs').insert(arr); if(insErr){ pvToast('❌ '+insErr.message); return; } }
+  const {error:insErr}=await sb.from('operateurs').insert(arr);
+  if(insErr){ if(backup.length) await sb.from('operateurs').insert(backup); pvToast('❌ Échec — liste restaurée : '+insErr.message); return; }
   pvClose(); pvToast('✅ Opérateurs enregistrés');
 }
 
@@ -368,11 +370,12 @@ function pvPreviewEtud(){
 }
 async function pvConfirmEtud(){
   pvToast('💾 Import en cours…');
+  const backup=(await sb.from('etudiants').select('*')).data||[];
   const {error:delErr}=await sb.from('etudiants').delete().neq('id',0);
   if(delErr){ pvToast('❌ '+delErr.message); return; }
   const rows=_etudPending.map(e=>({nom:e.nom,prenom:e.prenom,projet:e.projet,formation:e.formation||'',encadrant1:e.enc1||'',encadrant2:e.enc2||'',encadrant3:e.enc3||''}));
   const {error:insErr}=await sb.from('etudiants').insert(rows);
-  if(insErr){ pvToast('❌ '+insErr.message); return; }
+  if(insErr){ if(backup.length) await sb.from('etudiants').insert(backup.map(({id,...rest})=>rest)); pvToast('❌ Import échoué — liste restaurée : '+insErr.message); return; }
   pvToast('✅ '+rows.length+' étudiant(s) importé(s)'); openEtudiants();
 }
 async function pvClearEtud(){

@@ -712,7 +712,6 @@ function printPlanning(){
 }
 
 // ─── STATISTIQUES ──────────────────────────────────────────────────────────────
-// ─── STATISTIQUES ──────────────────────────────────────────────────────────────
 var _statsPeriod='2weeks';
 var _statsCustomStart='';
 var _statsCustomEnd='';
@@ -899,18 +898,36 @@ async function dbDeleteDisabled(machine,date,slot){
 }
 
 async function dbSaveMachines(arr,colors){
-  await sb.from('machines').delete().neq('name','__never__');
-  for(let i=0;i<arr.length;i++){
-    await sb.from('machines').insert({name:arr[i],color:colors[arr[i]],position:i});
+  // Sauvegarde de secours (restauration si l'écriture échoue) + conservation des statuts (panne)
+  var backup=(await sb.from('machines').select('*')).data||[];
+  var statusByName={}; backup.forEach(function(m){ statusByName[m.name]={status:m.status||'ok',status_reason:m.status_reason||'',status_date:m.status_date||null}; });
+  var {error:delErr}=await sb.from('machines').delete().neq('name','__never__');
+  if(delErr){ showToast('❌ '+(delErr.message||'Erreur suppression machines')); return false; }
+  var rows=arr.map(function(name,i){ var st=statusByName[name]||{}; return {name:name,color:colors[name],position:i,status:st.status||'ok',status_reason:st.status_reason||'',status_date:st.status_date||null}; });
+  var {error:insErr}=await sb.from('machines').insert(rows);
+  if(insErr){
+    if(backup.length) await sb.from('machines').insert(backup); // restauration
+    showToast('❌ Échec de l\'enregistrement — machines restaurées : '+(insErr.message||''));
+    return false;
   }
+  return true;
 }
 
 async function dbSaveOperateurs(arr, phoneMap){
-  await sb.from('operateurs').delete().neq('name','__never__');
-  for(const op of arr){
-    const info = (phoneMap && phoneMap[op]) || {};
-    await sb.from('operateurs').insert({name:op, phone: info.phone||'', apikey: info.apikey||'', code: info.code||''});
+  // Sauvegarde de secours (restauration si l'écriture échoue)
+  var backup=(await sb.from('operateurs').select('*')).data||[];
+  var {error:delErr}=await sb.from('operateurs').delete().neq('name','__never__');
+  if(delErr){ showToast('❌ '+(delErr.message||'Erreur suppression opérateurs')); return false; }
+  var rows=arr.map(function(op){ var info=(phoneMap&&phoneMap[op])||{}; return {name:op,phone:info.phone||'',apikey:info.apikey||'',code:info.code||''}; });
+  if(rows.length){
+    var {error:insErr}=await sb.from('operateurs').insert(rows);
+    if(insErr){
+      if(backup.length) await sb.from('operateurs').insert(backup); // restauration
+      showToast('❌ Échec de l\'enregistrement — opérateurs restaurés : '+(insErr.message||''));
+      return false;
+    }
   }
+  return true;
 }
 
 // ─── MODAL ─────────────────────────────────────────────────────────────────────
@@ -1044,7 +1061,7 @@ function applyAdminUI(){
 function openMachineManager(){ openModalName='machines';
   var rows=machines.map((m,i)=>{
     var color=getMachineColor(m);
-    return "<div class='machine-item' id='mrow-"+i+"' draggable='true' ondragstart='dragStart(event,"+i+")' ondragover='dragOver(event)' ondrop='dragDrop(event,"+i+")' ondragleave='dragLeave(event)'>"+
+    return "<div class='machine-item' id='mrow-"+i+"' draggable='true' data-orig=\""+esc(m)+"\" ondragstart='dragStart(event,"+i+")' ondragover='dragOver(event)' ondrop='dragDrop(event,"+i+")' ondragleave='dragLeave(event)'>"+
       "<span class='drag-handle' title='Glisser pour réordonner'>⠿</span>"+
       "<input type='text' class='mname' id='mname-"+i+"' value='"+esc(m)+"' placeholder='Nom de la machine'>"+
       "<span class='color-label'>Couleur&nbsp;</span>"+
@@ -1087,17 +1104,30 @@ function addMRow(){ var list=document.getElementById("mlist"); var i=list.childr
 function removeMRow(i){ var r=document.getElementById("mrow-"+i); if(r) r.remove(); }
 async function saveMachines(){
   var items=document.querySelectorAll("#mlist .machine-item");
-  var arr=[],colors={};
+  var arr=[],colors={},renames=[];
   items.forEach(item=>{
     var nameInp=item.querySelector(".mname"),colorInp=item.querySelector("input[type=color]");
     var v=nameInp?nameInp.value.trim():"";
-    if(v){ arr.push(v); colors[v]=colorInp?colorInp.value:"#3b82f6"; }
+    if(v){
+      arr.push(v); colors[v]=colorInp?colorInp.value:"#3b82f6";
+      var orig=item.getAttribute('data-orig')||"";
+      if(orig && orig!==v) renames.push({from:orig,to:v});
+    }
   });
   if(!arr.length){ alert("Il faut au moins une machine."); return; }
+  if(new Set(arr).size!==arr.length){ alert("Deux machines portent le même nom."); return; }
   showToast("💾 Enregistrement…");
-  await dbSaveMachines(arr,colors);
+  var ok=await dbSaveMachines(arr,colors);
+  if(!ok) return;
+  // Propager les renommages aux réservations et créneaux bloqués existants (rattachés par nom)
+  for(const r of renames){
+    if(arr.indexOf(r.from)>=0) continue; // ancien nom encore présent (échange de noms) → on ne renomme pas
+    await sb.from('bookings').update({machine:r.to}).eq('machine',r.from);
+    await sb.from('disabled_slots').update({machine:r.to}).eq('machine',r.from);
+  }
   machines=arr; machineColors=colors;
-  closeModal(); render(); showToast("✅ Machines enregistrées");
+  if(renames.length){ await loadBookings(); await loadDisabled(); }
+  closeModal(); render(); showToast("✅ Machines enregistrées"+(renames.length?" (réservations mises à jour)":""));
 }
 
 // ─── CAROUSEL PAGES CONFIG ────────────────────────────────────────────────────
@@ -1217,8 +1247,8 @@ async function applyState(snapB, snapD){
   for(var k in bookings){ var p=k.split("|"); if(dates.indexOf(p[1])>=0){ await sb.from('bookings').delete().match({machine:p[0],date:p[1],slot:p[2]}); } }
   for(var k2 in disabled){ var p2=k2.split("|"); if(dates.indexOf(p2[1])>=0){ await sb.from('disabled_slots').delete().match({machine:p2[0],date:p2[1],slot:p2[2]}); } }
   for(var k3 in snapB){ var p3=k3.split("|"); if(dates.indexOf(p3[1])<0) continue; var r=snapB[k3];
-    await sb.from('bookings').insert({machine:p3[0],date:p3[1],slot:p3[2],nom:r.nom||'',prenom:r.prenom||'',operateur:r.operateur||'',projet:r.projet||'',pin:r.pin||''}); }
-  for(var k4 in snapD){ var p4=k4.split("|"); if(dates.indexOf(p4[1])>=0){ await sb.from('disabled_slots').insert({machine:p4[0],date:p4[1],slot:p4[2]}); } }
+    await sb.from('bookings').insert({machine:p3[0],date:p3[1],slot:p3[2],nom:r.nom||'',prenom:r.prenom||'',operateur:r.operateur||'',projet:r.projet||'',pin:r.pin||'',encadrant1:r.encadrant1||'',encadrant2:r.encadrant2||'',encadrant3:r.encadrant3||''}); }
+  for(var k4 in snapD){ var p4=k4.split("|"); if(dates.indexOf(p4[1])>=0){ await sb.from('disabled_slots').insert({machine:p4[0],date:p4[1],slot:p4[2],reason:(snapD[k4]&&snapD[k4].reason)||''}); } }
   await loadBookings(); await loadDisabled(); render();
 }
 
@@ -1394,8 +1424,8 @@ function opRowHtml(i, name, phone, apikey, code){
     "</div>"+
     "<div style='display:flex;gap:8px;align-items:center'>"+
       "<label style='font-size:.8rem;color:var(--muted);white-space:nowrap'>Code validation :</label>"+
-      "<input type='password' class='opcode' id='opcode-"+i+"' value='"+esc(code||'')+"' maxlength='4' pattern='[0-9]{4}' placeholder='4 chiffres' style='width:90px;border:1.5px solid var(--border);border-radius:6px;padding:5px 9px;font-size:.85rem;color:var(--text);background:#fff;outline:none;font-family:monospace;letter-spacing:3px'>"+
-      "<span style='font-size:.78rem;color:var(--muted)'>Code secret à 4 chiffres pour valider les réservations</span>"+
+      "<input type='password' class='opcode' id='opcode-"+i+"' value='"+esc(code||'')+"' maxlength='4' pattern='[0-9]{4}' placeholder='4 chiffres' style='width:90px;border:1.5px solid "+(code?'var(--border)':'var(--danger)')+";border-radius:6px;padding:5px 9px;font-size:.85rem;color:var(--text);background:#fff;outline:none;font-family:monospace;letter-spacing:3px'>"+
+      "<span style='font-size:.78rem;color:"+(code?'var(--muted)':'var(--danger)')+"'>"+(code?'Code secret à 4 chiffres pour valider les réservations':'⚠️ Sans code, cet opérateur ne peut pas valider de réservation')+"</span>"+
     "</div>"+
   "</div>";
 }
@@ -1432,7 +1462,8 @@ async function saveOperateurs(){
     phoneMap[v]={ phone: phoneEl?phoneEl.value.trim():'', apikey: apikeyEl?apikeyEl.value.trim():'', code: codeEl?codeEl.value.trim():'' };
   });
   showToast("💾 Enregistrement…");
-  await dbSaveOperateurs(arr, phoneMap);
+  var ok=await dbSaveOperateurs(arr, phoneMap);
+  if(!ok) return;
   operateurs=arr; operateursPhone=phoneMap; closeModal(); showToast("✅ Opérateurs enregistrés");
 }
 
@@ -2039,7 +2070,7 @@ function render(){
 // ─── ONGLETS JOUR (mobile) ────────────────────────────────────────────────────
 function buildDayTabs(){
   var tabs=document.getElementById("dayTabs"); if(!tabs) return;
-  var week=getWorkWeek();
+  var week=getTwoWeekDays();
   tabs.innerHTML=week.map((d,i)=>{
     var cls="day-tab"+(isToday(d)?" is-today":"")+(i===selectedDayIdx?" active":"");
     var label=d.toLocaleDateString("fr-FR",{weekday:"short",day:"2-digit",month:"2-digit"});
