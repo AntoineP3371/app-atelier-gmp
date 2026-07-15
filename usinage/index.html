@@ -566,13 +566,10 @@ async function loadMachines(){
   const {data,error} = await sb.from('machines').select('*').order('position');
   if(error){ console.error(error); return; }
   if(!data || data.length===0){
-    // Données par défaut
+    // Fallback en mémoire si la table est vide (l'admin pourra les enregistrer via le gestionnaire)
     machines = ["Machine A","Machine B","Machine C"];
     machineColors = {};
     machines.forEach((m,i)=>{ machineColors[m]=DEFAULT_COLORS[i]; });
-    for(let i=0;i<machines.length;i++){
-      await sb.from('machines').insert({name:machines[i],color:machineColors[machines[i]],position:i});
-    }
   } else {
     machines = data.map(r=>r.name);
     machineColors = {};
@@ -641,15 +638,15 @@ function declarePanne(machine){
 async function confirmPanne(machine){
   var reason=(document.getElementById('panneReason')||{}).value||'';
   var today=fmt(new Date());
-  var {error}=await sb.from('machines').update({status:'panne',status_reason:reason,status_date:today}).eq('name',machine);
-  if(error){ showToast('❌ Erreur : '+error.message); return; }
+  var res=await sb.functions.invoke('admin-op',{ body:{ action:'machineStatus', adminCode:getAdminPw(), machine:machine, status:'panne', status_reason:reason, status_date:today } });
+  if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error)||'Erreur')); return; }
   machineStatus[machine]='panne'; machineStatusReason[machine]=reason; machineStatusDate[machine]=today;
   render(); showToast('🔧 '+machine+' déclarée en panne');
   closeModal(); openMachineStatusManager();
 }
 async function remettreEnService(machine){
-  var {error}=await sb.from('machines').update({status:'ok',status_reason:'',status_date:null}).eq('name',machine);
-  if(error){ showToast('❌ Erreur : '+error.message); return; }
+  var res=await sb.functions.invoke('admin-op',{ body:{ action:'machineStatus', adminCode:getAdminPw(), machine:machine, status:'ok', status_reason:'', status_date:null } });
+  if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error)||'Erreur')); return; }
   delete machineStatus[machine]; delete machineStatusReason[machine]; delete machineStatusDate[machine];
   render(); showToast('✔ '+machine+' remise en service');
   closeModal(); openMachineStatusManager();
@@ -903,21 +900,7 @@ async function dbDeleteDisabled(machine,date,slot){
   return true;
 }
 
-async function dbSaveMachines(arr,colors){
-  // Sauvegarde de secours (restauration si l'écriture échoue) + conservation des statuts (panne)
-  var backup=(await sb.from('machines').select('*')).data||[];
-  var statusByName={}; backup.forEach(function(m){ statusByName[m.name]={status:m.status||'ok',status_reason:m.status_reason||'',status_date:m.status_date||null}; });
-  var {error:delErr}=await sb.from('machines').delete().neq('name','__never__');
-  if(delErr){ showToast('❌ '+(delErr.message||'Erreur suppression machines')); return false; }
-  var rows=arr.map(function(name,i){ var st=statusByName[name]||{}; return {name:name,color:colors[name],position:i,status:st.status||'ok',status_reason:st.status_reason||'',status_date:st.status_date||null}; });
-  var {error:insErr}=await sb.from('machines').insert(rows);
-  if(insErr){
-    if(backup.length) await sb.from('machines').insert(backup); // restauration
-    showToast('❌ Échec de l\'enregistrement — machines restaurées : '+(insErr.message||''));
-    return false;
-  }
-  return true;
-}
+// L'enregistrement des machines passe désormais par la fonction serveur admin-op (voir saveMachines).
 
 // L'enregistrement des opérateurs passe désormais par la fonction serveur admin-operators
 // (voir saveOperateurs) — plus d'écriture directe depuis le navigateur.
@@ -1096,29 +1079,25 @@ function addMRow(){ var list=document.getElementById("mlist"); var i=list.childr
 function removeMRow(i){ var r=document.getElementById("mrow-"+i); if(r) r.remove(); }
 async function saveMachines(){
   var items=document.querySelectorAll("#mlist .machine-item");
-  var arr=[],colors={},renames=[];
-  items.forEach(item=>{
+  var machinesArr=[],renames=[];
+  items.forEach(function(item,i){
     var nameInp=item.querySelector(".mname"),colorInp=item.querySelector("input[type=color]");
     var v=nameInp?nameInp.value.trim():"";
     if(v){
-      arr.push(v); colors[v]=colorInp?colorInp.value:"#3b82f6";
+      machinesArr.push({name:v, color:colorInp?colorInp.value:"#3b82f6", position:i});
       var orig=item.getAttribute('data-orig')||"";
       if(orig && orig!==v) renames.push({from:orig,to:v});
     }
   });
-  if(!arr.length){ alert("Il faut au moins une machine."); return; }
-  if(new Set(arr).size!==arr.length){ alert("Deux machines portent le même nom."); return; }
+  var names=machinesArr.map(function(m){return m.name;});
+  if(!names.length){ alert("Il faut au moins une machine."); return; }
+  if(new Set(names).size!==names.length){ alert("Deux machines portent le même nom."); return; }
+  renames=renames.filter(function(r){ return names.indexOf(r.from)<0; }); // pas de renommage si l'ancien nom existe encore
   showToast("💾 Enregistrement…");
-  var ok=await dbSaveMachines(arr,colors);
-  if(!ok) return;
-  // Propager les renommages aux réservations et créneaux bloqués existants (rattachés par nom)
-  for(const r of renames){
-    if(arr.indexOf(r.from)>=0) continue; // ancien nom encore présent (échange de noms) → on ne renomme pas
-    await sb.from('bookings').update({machine:r.to}).eq('machine',r.from);
-    await sb.from('disabled_slots').update({machine:r.to}).eq('machine',r.from);
-  }
-  machines=arr; machineColors=colors;
-  if(renames.length){ await loadBookings(); await loadDisabled(); }
+  var res=await sb.functions.invoke('admin-op',{ body:{ action:'saveMachines', adminCode:getAdminPw(), machines:machinesArr, renames:renames } });
+  if(res.error || !res.data || !res.data.ok){ showToast("❌ Échec"+((res.data&&res.data.error)?" : "+res.data.error:"")); return; }
+  machines=names; machineColors={}; machinesArr.forEach(function(m){ machineColors[m.name]=m.color; });
+  await loadMachines(); if(renames.length){ await loadBookings(); await loadDisabled(); }
   closeModal(); render(); showToast("✅ Machines enregistrées"+(renames.length?" (réservations mises à jour)":""));
 }
 
