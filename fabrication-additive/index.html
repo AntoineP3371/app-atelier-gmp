@@ -687,8 +687,9 @@ async function loadEtudiants(){
   buildStudentLists();
 }
 async function loadOperateurs(){
-  const {data,error} = await sb.from('operateurs').select('*').order('name');
-  operateurs = (!error && data) ? data.map(r=>({name:r.name||'',code:(r.code||'').trim(),phone:(r.phone||'').trim(),apikey:(r.apikey||'').trim(),notif_3d:r.notif_3d!==false})) : [];
+  // Lecture publique : NOMS uniquement (+ indicateur has_whatsapp). Secrets non exposés au navigateur.
+  const {data,error} = await sb.from('operateurs_public').select('name, notif_3d, has_whatsapp').order('name');
+  operateurs = (!error && data) ? data.map(r=>({name:r.name||'',notif_3d:r.notif_3d!==false,has_whatsapp:!!r.has_whatsapp})) : [];
 }
 function buildStudentLists(){
   const sel=document.getElementById('fprojet');
@@ -952,11 +953,14 @@ function askOperateur(){
   document.getElementById('opErr').classList.remove('show');
   openOverlay('ovOperateur');
 }
-function confirmOperateur(){
+async function confirmOperateur(){
   const nom=document.getElementById('opNomSelect').value;
   const code=document.getElementById('opCodeInput').value.trim();
-  const op=operateurs.find(o=>o.name===nom);
-  if(op && op.code && op.code===code){ currentOperateurNom=nom; closeOverlay('ovOperateur'); openOperateur(); }
+  let ok=false;
+  if(nom && code){
+    try{ const {data,error}=await sb.functions.invoke('verify-code',{ body:{ kind:'operateur', name:nom, code:code } }); ok=!error && !!(data && data.ok); }catch(e){ ok=false; }
+  }
+  if(ok){ currentOperateurNom=nom; closeOverlay('ovOperateur'); openOperateur(); }
   else { document.getElementById('opErr').classList.add('show'); document.getElementById('opCodeInput').classList.add('err'); }
 }
 function openCodeModal(role,title,meta){
@@ -1058,21 +1062,17 @@ async function validerDemande(id, ok){
   const {data,error}=await sb.from('demandes').update(patch).eq('id',id).select().single();
   busy(false);
   if(error){ showToast('❌ '+error.message); return; }
-  if(ok){ const n=notifyOperateurs(data||{}); showToast(n>0?'✔️ Demande validée — '+n+' opérateur(s) notifié(s)':'✔️ Demande validée'); }
+  if(ok){ const n=await notifyOperateurs(data||{}); showToast(n>0?'✔️ Demande validée — '+n+' opérateur(s) notifié(s)':'✔️ Demande validée'); }
   else showToast('✖️ Demande refusée');
   loadEncadrant(true);
 }
-function notifyOperateurs(d){
-  const cibles=operateurs.filter(o=>o.phone && o.apikey && (OPERATEURS_NOTIF===null || OPERATEURS_NOTIF.includes(o.name)));
-  if(!cibles.length) return 0;
+async function notifyOperateurs(d){
+  // Le message ne contient aucune donnée sensible ; l'envoi (avec numéros/clés API) se fait
+  // CÔTÉ SERVEUR via la fonction notify-print, qui gère aussi le filtrage des destinataires.
   const msg="🖨️ Impression 3D à traiter : "+(d.fichier_nom||'')+" ("+(d.projet||'')+", "+
     (d.etudiant_prenom||'')+" "+(d.etudiant_nom||'')+"). Validée par "+(d.encadrant_nom||'')+". "+
     machineLabel(d.machine)+", "+tempsLabel(d)+(d.encadrant_commentaire?". Note : "+d.encadrant_commentaire:".");
-  cibles.forEach(o=>{
-    const url="https://api.callmebot.com/whatsapp.php?phone="+encodeURIComponent(o.phone)+"&text="+encodeURIComponent(msg)+"&apikey="+encodeURIComponent(o.apikey);
-    fetch(url,{mode:'no-cors'}).catch(()=>{});
-  });
-  return cibles.length;
+  try{ const {data,error}=await sb.functions.invoke('notify-print',{ body:{ message: msg } }); return (!error && data && data.count)||0; }catch(e){ return 0; }
 }
 function openRenameProjet(){
   const mes=Object.keys(projetEncadrants).filter(p=>projetEncadrants[p].has(currentEncadrantNom)).sort((a,b)=>a.localeCompare(b));
@@ -1514,7 +1514,7 @@ function renderNotifOperateurs(){
   const box=document.getElementById('notifOperateurs');
   if(!operateurs.length){ box.innerHTML="<div style='font-size:.82rem;color:var(--muted)'>Aucun opérateur (à gérer depuis la page d'accueil).</div>"; return; }
   box.innerHTML=operateurs.map(o=>{
-    const has=!!(o.phone&&o.apikey);
+    const has=!!o.has_whatsapp;
     const checked=(OPERATEURS_NOTIF===null ? has : OPERATEURS_NOTIF.includes(o.name));
     return "<label class='notif-op'><input type='checkbox' class='notif-cb' value='"+esc(o.name)+"'"+(checked?' checked':'')+">"+
       esc(o.name)+(has?"":"<span class='notif-warn'>pas de WhatsApp</span>")+"</label>";

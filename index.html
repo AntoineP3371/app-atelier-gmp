@@ -165,7 +165,7 @@
   </div>
 
   <footer>Atelier GMP — IUT Bordeaux</footer>
-  <div class="site-version">v2.3.1</div>
+  <div class="site-version">v2.4.0</div>
 
 <div class="pv-overlay" id="pvOverlay"><div class="pv-modal" id="pvModal"></div></div>
 <div class="pv-toast" id="pvToast"></div>
@@ -189,6 +189,7 @@ function pvClose(){ document.getElementById('pvOverlay').classList.remove('open'
 // Volontairement NON persisté (ni sessionStorage, ni variable conservée après un retour arrière) :
 // il faut se réidentifier à chaque arrivée sur ces écrans, y compris via le bouton précédent du navigateur.
 let _pvPending=null;
+let _pvAdminPw='';   // mot de passe admin (mémorisé le temps de la session) pour les appels aux fonctions serveur
 function portalAuth(which){
   _pvPending=which;
   pvOpen(
@@ -201,7 +202,8 @@ function portalAuth(which){
   setTimeout(()=>{ const i=document.getElementById('pvPw'); if(i)i.focus(); },50);
 }
 async function pvCheckPw(){
-  if(await sha256hex(document.getElementById('pvPw').value)===ADMIN_PW_HASH){ openManager(_pvPending); }
+  const pw=document.getElementById('pvPw').value;
+  if(await sha256hex(pw)===ADMIN_PW_HASH){ _pvAdminPw=pw; openManager(_pvPending); }
   else document.getElementById('pvPwErr').classList.add('show');
 }
 function openManager(which){ if(which==='operateurs') openOperateurs(); else openEtudiants(); }
@@ -212,8 +214,9 @@ window.addEventListener('pageshow', function(e){ if(e.persisted){ pvClose(); } }
 // ══════════════ OPÉRATEURS ══════════════
 async function openOperateurs(){
   pvOpen("<h2>👥 Gérer les opérateurs</h2><div class='pv-meta'>Chargement…</div>");
-  const {data,error}=await sb.from('operateurs').select('*').order('name');
-  const ops = (!error&&data)?data:[];
+  const res=await sb.functions.invoke('admin-operators',{ body:{ action:'list', adminCode:_pvAdminPw } });
+  if(res.error || !res.data || !res.data.ok){ pvOpen("<h2>👥 Gérer les opérateurs</h2><div class='pv-meta'>Accès refusé — reconnectez-vous.</div><div class='pv-actions'><button class='pv-btn' onclick='pvClose()'>Fermer</button></div>"); return; }
+  const ops=res.data.operators||[];
   let rows=ops.map(o=>opRow(o.name||'',o.phone||'',o.apikey||'',o.code||'')).join('');
   pvOpen(
     "<h2>👥 Gérer les opérateurs</h2>"+
@@ -254,11 +257,8 @@ async function saveOperateurs(){
   });
   if(!arr.length){ pvToast('⚠️ Ajoutez au moins un opérateur'); return; }
   pvToast('💾 Enregistrement…');
-  const backup=(await sb.from('operateurs').select('*')).data||[];
-  const {error:delErr}=await sb.from('operateurs').delete().neq('name','__never__');
-  if(delErr){ pvToast('❌ '+delErr.message); return; }
-  const {error:insErr}=await sb.from('operateurs').insert(arr);
-  if(insErr){ if(backup.length) await sb.from('operateurs').insert(backup); pvToast('❌ Échec — liste restaurée : '+insErr.message); return; }
+  const res=await sb.functions.invoke('admin-operators',{ body:{ action:'save', adminCode:_pvAdminPw, operators:arr } });
+  if(res.error || !res.data || !res.data.ok){ pvToast('❌ Échec'+((res.data&&res.data.error)?' : '+res.data.error:'')); return; }
   pvClose(); pvToast('✅ Opérateurs enregistrés');
 }
 

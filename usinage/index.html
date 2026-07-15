@@ -461,6 +461,13 @@ const SLOT_PM = ["14h-18h"];
 // (Camouflage contre la lecture du code source ; ce n'est pas une protection forte.)
 const ADMIN_PW_HASH = "ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270";
 async function sha256hex(s){ const b=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+// Mot de passe admin mémorisé (session) pour les appels aux fonctions serveur réservées à l'admin.
+function getAdminPw(){ return sessionStorage.getItem('adminPw')||''; }
+// Vérifie un code opérateur CÔTÉ SERVEUR (Edge Function verify-code) — le code n'est plus dans le navigateur.
+async function verifyOperateurCode(name, code){
+  if(!name || !code) return false;
+  try{ const {data,error}=await sb.functions.invoke('verify-code',{ body:{ kind:'operateur', name:name, code:code } }); return !error && !!(data && data.ok); }catch(e){ return false; }
+}
 const DEFAULT_COLORS = ["#3b82f6","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6","#f97316"];
 
 // ─── ÉTAT LOCAL (cache) ────────────────────────────────────────────────────────
@@ -829,19 +836,12 @@ function exportStatsCsv(){
 }
 
 async function loadOperateurs(){
-  const {data,error} = await sb.from('operateurs').select('*').order('name');
+  // Lecture publique : NOMS uniquement (les secrets code/téléphone/clé API ne sont plus exposés au navigateur).
+  const {data,error} = await sb.from('operateurs_public').select('name, notif_3d, has_whatsapp').order('name');
   if(error){ console.error(error); return; }
-  if(!data || data.length===0){
-    operateurs = ["Ligne 1","Ligne 2","Ligne 3","Maintenance","R&D"];
-    operateursPhone = {};
-    for(const op of operateurs){
-      await sb.from('operateurs').insert({name:op, phone:'', apikey:''});
-    }
-  } else {
-    operateurs = data.map(r=>r.name);
-    operateursPhone = {};
-    data.forEach(r=>{ operateursPhone[r.name] = {phone: r.phone||'', apikey: r.apikey||'', code: r.code||''}; });
-  }
+  operateurs = (data||[]).map(r=>r.name);
+  operateursPhone = {};
+  (data||[]).forEach(r=>{ operateursPhone[r.name] = { has_whatsapp: !!r.has_whatsapp }; });
   populateOpFilter();
 }
 
@@ -919,22 +919,8 @@ async function dbSaveMachines(arr,colors){
   return true;
 }
 
-async function dbSaveOperateurs(arr, phoneMap){
-  // Sauvegarde de secours (restauration si l'écriture échoue)
-  var backup=(await sb.from('operateurs').select('*')).data||[];
-  var {error:delErr}=await sb.from('operateurs').delete().neq('name','__never__');
-  if(delErr){ showToast('❌ '+(delErr.message||'Erreur suppression opérateurs')); return false; }
-  var rows=arr.map(function(op){ var info=(phoneMap&&phoneMap[op])||{}; return {name:op,phone:info.phone||'',apikey:info.apikey||'',code:info.code||''}; });
-  if(rows.length){
-    var {error:insErr}=await sb.from('operateurs').insert(rows);
-    if(insErr){
-      if(backup.length) await sb.from('operateurs').insert(backup); // restauration
-      showToast('❌ Échec de l\'enregistrement — opérateurs restaurés : '+(insErr.message||''));
-      return false;
-    }
-  }
-  return true;
-}
+// L'enregistrement des opérateurs passe désormais par la fonction serveur admin-operators
+// (voir saveOperateurs) — plus d'écriture directe depuis le navigateur.
 
 // ─── MODAL ─────────────────────────────────────────────────────────────────────
 function openModal(html,fullscreen){
@@ -1039,8 +1025,9 @@ function toggleAdmin(){
   document.getElementById("apw").addEventListener("keydown",e=>{ if(e.key==="Enter") checkPw(); });
 }
 async function checkPw(){
-  if(await sha256hex(document.getElementById("apw").value)===ADMIN_PW_HASH){
-    isAdmin=true; sessionStorage.setItem('isAdmin','1'); closeModal(); applyAdminUI(); render();
+  var _pw=document.getElementById("apw").value;
+  if(await sha256hex(_pw)===ADMIN_PW_HASH){
+    isAdmin=true; sessionStorage.setItem('isAdmin','1'); sessionStorage.setItem('adminPw',_pw); closeModal(); applyAdminUI(); render();
     if(window.__pendingManager) runPendingManager();
   } else {
     document.getElementById("apwErr").style.display="block";
@@ -1051,7 +1038,7 @@ function runPendingManager(){
   var pm=window.__pendingManager; window.__pendingManager=null;
   ({machines:openMachineManager,operateurs:openOperateurManager,carousel:openCarouselConfig,history:openHistory,ical:openIcalExport,carouselview:startMachineCarousel})[pm]?.();
 }
-function logoutAdmin(){ isAdmin=false; sessionStorage.removeItem('isAdmin'); applyAdminUI(); render(); }
+function logoutAdmin(){ isAdmin=false; sessionStorage.removeItem('isAdmin'); sessionStorage.removeItem('adminPw'); applyAdminUI(); render(); }
 function applyAdminUI(){
   document.getElementById("adminBtn").classList.toggle("active",isAdmin);
   document.getElementById("adminBanner").classList.toggle("visible",isAdmin);
@@ -1434,8 +1421,10 @@ function opRowHtml(i, name, phone, apikey, code){
     "</div>"+
   "</div>";
 }
-function openOperateurManager(){ openModalName='operateurs';
-  var rows=operateurs.map((op,i)=>{ var info=operateursPhone[op]||{}; return opRowHtml(i,op,info.phone||'',info.apikey||'',info.code||''); }).join("");
+async function openOperateurManager(){ openModalName='operateurs';
+  var res=await sb.functions.invoke('admin-operators',{ body:{ action:'list', adminCode:getAdminPw() } });
+  if(res.error || !res.data || !res.data.ok){ showToast("⛔ Session admin expirée — reconnectez-vous"); return; }
+  var rows=(res.data.operators||[]).map((o,i)=>opRowHtml(i,o.name||'',o.phone||'',o.apikey||'',o.code||'')).join("");
   openModal(
     "<h2>👥 Gérer les opérateurs</h2>"+
     "<div class='meta'>Pour chaque opérateur, vous pouvez renseigner son numéro WhatsApp et sa clé API CallMeBot. Il recevra alors automatiquement une notification WhatsApp <strong>20 minutes avant</strong> chaque créneau qui le concerne.</div>"+
@@ -1456,20 +1445,17 @@ function openOperateurManager(){ openModalName='operateurs';
 function addOpRow(){ var list=document.getElementById("oplist"); var i=list.children.length; list.insertAdjacentHTML('beforeend', opRowHtml(i,'','','','')); }
 function removeOpRow(i){ var r=document.getElementById("oprow-"+i); if(r) r.remove(); }
 async function saveOperateurs(){
-  var nameInputs=document.querySelectorAll("#oplist .opname");
-  var arr=[]; var phoneMap={};
-  nameInputs.forEach((inp,idx)=>{
-    var v=inp.value.trim(); if(!v) return;
-    arr.push(v);
-    var phoneEl=document.getElementById("opphone-"+idx);
-    var apikeyEl=document.getElementById("opapikey-"+idx);
-    var codeEl=document.getElementById("opcode-"+idx);
-    phoneMap[v]={ phone: phoneEl?phoneEl.value.trim():'', apikey: apikeyEl?apikeyEl.value.trim():'', code: codeEl?codeEl.value.trim():'' };
+  var ops=[];
+  document.querySelectorAll("#oplist .op-item").forEach(function(row){
+    var inp=row.querySelector('.opname'); var v=inp?inp.value.trim():''; if(!v) return;
+    var ph=row.querySelector('.opphone'), ak=row.querySelector('.opapikey'), cd=row.querySelector('.opcode');
+    ops.push({ name:v, phone:ph?ph.value.trim():'', apikey:ak?ak.value.trim():'', code:cd?cd.value.trim():'' });
   });
   showToast("💾 Enregistrement…");
-  var ok=await dbSaveOperateurs(arr, phoneMap);
-  if(!ok) return;
-  operateurs=arr; operateursPhone=phoneMap; closeModal(); showToast("✅ Opérateurs enregistrés");
+  var res=await sb.functions.invoke('admin-operators',{ body:{ action:'save', adminCode:getAdminPw(), operators:ops } });
+  if(res.error || !res.data || !res.data.ok){ showToast("❌ Échec de l'enregistrement"+((res.data&&res.data.error)?" : "+res.data.error:"")); return; }
+  operateurs=ops.map(function(o){return o.name;}); operateursPhone={}; operateurs.forEach(function(n){ operateursPhone[n]={}; });
+  closeModal(); showToast("✅ Opérateurs enregistrés"); populateOpFilter();
 }
 
 function buildOperateurSelect(){
@@ -1696,14 +1682,9 @@ async function submitBook(machine,date,slot){
   var opcodeEl=document.getElementById("fopcode");
   var opcodeErrEl=document.getElementById("eopcode");
   var enteredCode=opcodeEl?opcodeEl.value.trim():'';
-  var storedCode=(operateursPhone[opVal]||{}).code||'';
-  // Le code saisi doit OBLIGATOIREMENT être celui de l'opérateur choisi.
-  if(!storedCode){
-    if(opcodeErrEl){ opcodeErrEl.textContent="Cet opérateur n'a pas de code de validation. Demandez à l'administrateur de le configurer."; opcodeErrEl.classList.add("show"); }
-    if(opcodeEl){ opcodeEl.classList.add("err"); opcodeEl.focus(); }
-    return;
-  }
-  if(enteredCode!==storedCode){
+  // Vérification du code opérateur CÔTÉ SERVEUR (le code n'est plus dans le navigateur).
+  var okCode=await verifyOperateurCode(opVal, enteredCode);
+  if(!okCode){
     if(opcodeErrEl){ opcodeErrEl.textContent="Code opérateur incorrect."; opcodeErrEl.classList.add("show"); }
     if(opcodeEl){ opcodeEl.classList.add("err"); opcodeEl.focus(); }
     return;
@@ -1724,12 +1705,6 @@ async function submitBook(machine,date,slot){
     encadrant2:((document.getElementById("fenc2")||{}).value||'').trim()||encMatch.enc2||'',
     encadrant3:((document.getElementById("fenc3")||{}).value||'').trim()||encMatch.enc3||''
   };
-  // Ajouter nouvel opérateur si besoin
-  if(document.getElementById("foperateur").value==="__new__" && opVal && !operateurs.includes(opVal)){
-    operateurs.push(opVal);
-    operateursPhone[opVal] = {phone:'', apikey:'', code:''};
-    await sb.from('operateurs').insert({name:opVal, phone:'', apikey:'', code:''});
-  }
   showToast("💾 Enregistrement…");
   var key=machine+"|"+date+"|"+slot;
   var _before=snapState();
@@ -1803,21 +1778,15 @@ async function submitEditBooking(key){
   var opcodeEl=document.getElementById("edit-opcode");
   var opcodeErrEl=document.getElementById("edit-opcode-err");
   var enteredCode=opcodeEl?opcodeEl.value.trim():'';
-  var storedCode=(operateursPhone[opVal]||{}).code||'';
-  // Le code saisi doit OBLIGATOIREMENT être celui de l'opérateur choisi.
-  if(!storedCode){
-    if(opcodeErrEl){ opcodeErrEl.textContent="Cet opérateur n'a pas de code de validation. Demandez à l'administrateur de le configurer."; opcodeErrEl.classList.add("show"); }
-    if(opcodeEl){ opcodeEl.classList.add("err"); opcodeEl.focus(); }
-    return;
-  }
-  if(enteredCode!==storedCode){
+  // Vérification du code opérateur CÔTÉ SERVEUR (le code n'est plus dans le navigateur).
+  var okCode=await verifyOperateurCode(opVal, enteredCode);
+  if(!okCode){
     if(opcodeErrEl){ opcodeErrEl.textContent="Code opérateur incorrect."; opcodeErrEl.classList.add("show"); }
     if(opcodeEl){ opcodeEl.classList.add("err"); opcodeEl.focus(); }
     return;
   }
   if(opcodeEl) opcodeEl.classList.remove("err");
   if(opcodeErrEl) opcodeErrEl.classList.remove("show");
-  if(document.getElementById("edit-operateur").value==="__new__" && opVal && !operateurs.includes(opVal)){ operateurs.push(opVal); operateursPhone[opVal]={phone:'',apikey:''}; await sb.from('operateurs').insert({name:opVal, phone:'', apikey:''}); }
   var parts=key.split("|");
   var data={nom:document.getElementById("edit-nom").value.trim(),prenom:document.getElementById("edit-prenom").value.trim(),operateur:opVal,projet:document.getElementById("edit-projet").value.trim(),encadrant1:bookings[key].encadrant1||'',encadrant2:bookings[key].encadrant2||'',encadrant3:bookings[key].encadrant3||''};
   // Nouvelle place choisie (machine / date / créneau)
@@ -1900,20 +1869,14 @@ function promptPinMove(srcKey,destKey){
   );
   setTimeout(function(){ var el=document.getElementById('movePin'); if(el) el.focus(); },50);
 }
-function confirmPinMove(srcKey,destKey,storedPin,opName){
+async function confirmPinMove(srcKey,destKey,storedPin,opName){
   var entered=document.getElementById('movePin').value.trim();
   if(entered!==storedPin){ document.getElementById('movePinErr').style.display='block'; document.getElementById('movePin').classList.add('err'); return; }
   var opcodeEl=document.getElementById('moveOpcode');
   var opcodeErrEl=document.getElementById('moveOpcodeErr');
   var enteredCode=opcodeEl?opcodeEl.value.trim():'';
-  var storedCode=(operateursPhone[opName]||{}).code||'';
-  // Le code saisi doit OBLIGATOIREMENT être celui de l'opérateur choisi.
-  if(!storedCode){
-    if(opcodeErrEl){ opcodeErrEl.textContent="Cet opérateur n'a pas de code de validation. Demandez à l'administrateur de le configurer."; opcodeErrEl.classList.add('show'); }
-    if(opcodeEl){ opcodeEl.classList.add('err'); opcodeEl.focus(); }
-    return;
-  }
-  if(enteredCode!==storedCode){
+  var okCode=await verifyOperateurCode(opName, enteredCode);
+  if(!okCode){
     if(opcodeErrEl){ opcodeErrEl.textContent="Code opérateur incorrect."; opcodeErrEl.classList.add('show'); }
     if(opcodeEl){ opcodeEl.classList.add('err'); opcodeEl.focus(); }
     return;
