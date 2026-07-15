@@ -165,7 +165,7 @@
   </div>
 
   <footer>Atelier GMP — IUT Bordeaux</footer>
-  <div class="site-version">v2.4.2</div>
+  <div class="site-version">v2.4.3</div>
 
 <div class="pv-overlay" id="pvOverlay"><div class="pv-modal" id="pvModal"></div></div>
 <div class="pv-toast" id="pvToast"></div>
@@ -280,12 +280,9 @@ async function pvRenameProjet(){
   if(ancien===nouveau){ pvToast('Nom identique'); return; }
   if(!confirm('Renommer « '+ancien+' » en « '+nouveau+' » ?\nMet à jour la liste étudiants et toutes les demandes.')) return;
   pvToast('✏️ Renommage…');
-  const e1=await sb.from('etudiants').update({projet:nouveau}).eq('projet',ancien);
-  if(e1.error){ pvToast('❌ '+e1.error.message); return; }
-  const e2=await sb.from('demandes').update({projet:nouveau}).eq('projet',ancien);
-  if(e2.error){ pvToast('❌ Étudiants OK, mais demandes : '+e2.error.message); }
-  else pvToast('✅ Projet renommé');
-  openEtudiants();
+  const res=await sb.functions.invoke('admin-operators',{ body:{ action:'etudiants-rename', adminCode:_pvAdminPw, from:ancien, to:nouveau } });
+  if(res.error || !res.data || !res.data.ok){ pvToast('❌ Échec'+((res.data&&res.data.error)?' : '+res.data.error:'')); return; }
+  pvToast('✅ Projet renommé'); openEtudiants();
 }
 async function openEtudiants(){
   pvOpen("<h2>👨‍🎓 Étudiants / Projets</h2><div class='pv-meta'>Chargement…</div>");
@@ -375,17 +372,15 @@ function pvPreviewEtud(){
 }
 async function pvConfirmEtud(){
   pvToast('💾 Import en cours…');
-  const backup=(await sb.from('etudiants').select('*')).data||[];
-  const {error:delErr}=await sb.from('etudiants').delete().neq('id',0);
-  if(delErr){ pvToast('❌ '+delErr.message); return; }
   const rows=_etudPending.map(e=>({nom:e.nom,prenom:e.prenom,projet:e.projet,formation:e.formation||'',encadrant1:e.enc1||'',encadrant2:e.enc2||'',encadrant3:e.enc3||''}));
-  const {error:insErr}=await sb.from('etudiants').insert(rows);
-  if(insErr){ if(backup.length) await sb.from('etudiants').insert(backup.map(({id,...rest})=>rest)); pvToast('❌ Import échoué — liste restaurée : '+insErr.message); return; }
+  const res=await sb.functions.invoke('admin-operators',{ body:{ action:'etudiants-import', adminCode:_pvAdminPw, etudiants:rows } });
+  if(res.error || !res.data || !res.data.ok){ pvToast('❌ Import échoué'+((res.data&&res.data.error)?' : '+res.data.error:'')); return; }
   pvToast('✅ '+rows.length+' étudiant(s) importé(s)'); openEtudiants();
 }
 async function pvClearEtud(){
   if(!confirm('Supprimer toute la liste des étudiants ?')) return;
-  await sb.from('etudiants').delete().neq('id',0);
+  const res=await sb.functions.invoke('admin-operators',{ body:{ action:'etudiants-clear', adminCode:_pvAdminPw } });
+  if(res.error || !res.data || !res.data.ok){ pvToast('❌ Échec'); return; }
   pvToast('🗑 Liste supprimée'); openEtudiants();
 }
 </script>

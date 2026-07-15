@@ -28,17 +28,39 @@ function json(body: unknown, status = 200) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   try {
-    const { action, adminCode, operators } = await req.json()
-
-    // Authentification admin (empreinte comparée à la variable d'environnement)
-    const expected = (Deno.env.get('ADMIN_PW_HASH') || '').trim()
-    const given = await sha256hex((adminCode ?? '').toString())
-    if (!expected || given !== expected) return json({ ok: false, error: 'unauthorized' }, 401)
+    const body = await req.json()
+    const { action, adminCode, operators } = body
 
     const sb = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
+
+    // Admin (empreinte du mot de passe) — requis pour la plupart des actions.
+    const expected = (Deno.env.get('ADMIN_PW_HASH') || '').trim()
+    const isAdmin = !!expected && (await sha256hex((adminCode ?? '').toString())) === expected
+
+    // Renommage de projet : autorisé à l'admin OU à un encadrant (code encadrant valide).
+    if (action === 'etudiants-rename') {
+      let ok = isAdmin
+      if (!ok) {
+        const ec = (body.encadrantCode ?? '').toString()
+        if (ec) {
+          const { data } = await sb.from('parametres').select('valeur').eq('cle', 'code_encadrant').maybeSingle()
+          ok = ((data?.valeur) || '0000') === ec
+        }
+      }
+      if (!ok) return json({ ok: false, error: 'unauthorized' }, 401)
+      const from = (body.from ?? '').toString(), to = (body.to ?? '').toString()
+      if (!from || !to) return json({ ok: false, error: 'bad params' }, 400)
+      const e1 = await sb.from('etudiants').update({ projet: to }).eq('projet', from)
+      if (e1.error) throw e1.error
+      await sb.from('demandes').update({ projet: to }).eq('projet', from)
+      return json({ ok: true })
+    }
+
+    // Toutes les autres actions exigent l'admin.
+    if (!isAdmin) return json({ ok: false, error: 'unauthorized' }, 401)
 
     if (action === 'list') {
       const { data, error } = await sb
@@ -72,6 +94,36 @@ Deno.serve(async (req) => {
           throw ins.error
         }
       }
+      return json({ ok: true })
+    }
+
+    // ── Étudiants (portail) ──
+    if (action === 'etudiants-import') {
+      const rows = ((body.etudiants || []) as any[])
+        .filter((e) => e && (e.nom ?? '').toString().trim() && (e.prenom ?? '').toString().trim() && (e.projet ?? '').toString().trim())
+        .map((e) => ({
+          nom: e.nom.toString().trim(), prenom: e.prenom.toString().trim(), projet: e.projet.toString().trim(),
+          formation: (e.formation ?? '').toString().trim(),
+          encadrant1: (e.encadrant1 ?? '').toString().trim(),
+          encadrant2: (e.encadrant2 ?? '').toString().trim(),
+          encadrant3: (e.encadrant3 ?? '').toString().trim(),
+        }))
+      const backup = (await sb.from('etudiants').select('*')).data || []
+      const del = await sb.from('etudiants').delete().neq('id', 0)
+      if (del.error) throw del.error
+      if (rows.length) {
+        const ins = await sb.from('etudiants').insert(rows)
+        if (ins.error) {
+          if (backup.length) await sb.from('etudiants').insert((backup as any[]).map(({ id, ...r }) => r))
+          throw ins.error
+        }
+      }
+      return json({ ok: true })
+    }
+
+    if (action === 'etudiants-clear') {
+      const del = await sb.from('etudiants').delete().neq('id', 0)
+      if (del.error) throw del.error
       return json({ ok: true })
     }
 

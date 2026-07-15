@@ -610,6 +610,7 @@ let demandesById = {};       // cache des demandes affichées (pour le bouton Vo
 let currentEncadrantNom = '';
 let currentOperateurNom = '';
 let currentRole = null;      // 'encadrant' | 'admin'
+let _encadrantCode = '';     // code encadrant saisi (mémorisé pour les appels aux fonctions)
 
 // ─────────────────────────────────────────────────────────────────────────
 //  UTILITAIRES
@@ -980,7 +981,7 @@ async function confirmCode(){
     if(await sha256hex(code)===ADMIN_PW_HASH){ closeOverlay('ovCode'); openAdmin(); }
     else codeError();
   } else if(currentRole==='encadrant'){
-    if(code===(PARAMS.code_encadrant||'0000')){ closeOverlay('ovCode'); chooseEncadrantNom(); }
+    if(code===(PARAMS.code_encadrant||'0000')){ _encadrantCode=code; closeOverlay('ovCode'); chooseEncadrantNom(); }
     else codeError();
   }
 }
@@ -1087,12 +1088,10 @@ async function confirmRenameProjet(){
   if(!ancien||!nouveau){ showToast('⚠️ Indiquez le nouveau nom'); return; }
   if(ancien===nouveau){ showToast('Nom identique'); return; }
   busy(true,'Renommage…');
-  const e1=await sb.from('etudiants').update({projet:nouveau}).eq('projet',ancien);
-  if(e1.error){ busy(false); showToast('❌ '+e1.error.message); return; }
-  const e2=await sb.from('demandes').update({projet:nouveau}).eq('projet',ancien);
+  const res=await sb.functions.invoke('admin-operators',{ body:{ action:'etudiants-rename', encadrantCode:_encadrantCode, from:ancien, to:nouveau } });
   busy(false);
-  if(e2.error){ showToast('❌ Étudiants OK, demandes : '+e2.error.message); }
-  else showToast('✅ Projet « '+nouveau+' » mis à jour');
+  if(res.error || !res.data || !res.data.ok){ showToast('❌ Échec'+((res.data&&res.data.error)?' : '+res.data.error:'')); return; }
+  showToast('✅ Projet « '+nouveau+' » mis à jour');
   closeOverlay('ovRenameProj');
   await loadEtudiants(); buildSuiviLists(); loadEncadrant();
 }
