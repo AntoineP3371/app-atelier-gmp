@@ -3,7 +3,7 @@
 // Auth par action :
 //   create  : public (mais la LIMITE par projet est vérifiée côté serveur)
 //   valider : code encadrant
-//   lancer / statut / archive / reorder : code opérateur (nom + code)
+//   lancer / statut / archive / reorder / op-commentaire : code opérateur (nom + code)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
@@ -82,6 +82,15 @@ Deno.serve(async (req) => {
       if (b.statut === 'imprimee') patch.imprime_at = new Date().toISOString()
       if (b.statut === 'validee') { patch.en_cours_at = null; patch.imprime_at = null }
       const { error } = await sb.from('demandes').update(patch).eq('id', b.id)
+      if (error) throw error
+      return json({ ok: true })
+    }
+
+    if (action === 'op-commentaire') {
+      if (!(await opOk(b.operateur, b.opCode))) return json({ ok: false, error: 'auth' }, 401)
+      const { error } = await sb.from('demandes')
+        .update({ operateur_commentaire: (b.commentaire ?? '').toString() })
+        .eq('id', b.id)
       if (error) throw error
       return json({ ok: true })
     }

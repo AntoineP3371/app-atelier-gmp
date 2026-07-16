@@ -478,6 +478,7 @@
     <button class="btn btn-ghost" style="width:100%;margin-top:6px" onclick="addMachineRow()">＋ Ajouter une machine</button>
     <div class="hint" style="margin-top:6px">Temps estimé ≈ volume × taux ÷ débit + temps fixe, ×1,2 par option (taraudage / insert / usinage).</div>
     <div class="modal-actions">
+      <button class="btn btn-danger" style="margin-right:auto" onclick="logoutFabAdmin()" title="Oublier le mot de passe admin sur cet appareil">↩ Déconnecter</button>
       <button class="btn btn-close" onclick="closeOverlay('ovAdmin')">Fermer</button>
       <button class="btn btn-admin" onclick="saveAdmin()">💾 Enregistrer</button>
     </div>
@@ -576,10 +577,8 @@ const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw9ksxZ4TpFQUaZhXbS2lXSyrPgRzDTaUtyINhLWIMw5dGAFY1X0Dc3aAm9OBjZlv_2sA/exec';
 
 const MAX_FILE_MB = 50;
-// Empreinte SHA-256 du mot de passe admin — le mot de passe en clair n'apparaît pas dans le code.
-// (Camouflage contre la lecture du code source ; ce n'est pas une protection forte.)
-const ADMIN_PW_HASH = 'ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270';
-async function sha256hex(s){ const b=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+// Le mot de passe admin est vérifié CÔTÉ SERVEUR (Edge Function admin-op, action 'login') —
+// plus aucune empreinte n'apparaît dans le code source de la page.
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
@@ -953,7 +952,12 @@ function closeFsViewer(){ closeOverlay('ovViewer'); if(fsViewer){ try{fsViewer.D
 //  SAISIE DE CODE (générique)
 // ─────────────────────────────────────────────────────────────────────────
 function askEncadrant(){ openCodeModal('encadrant','Espace encadrant','Code de validation à 4 chiffres.'); }
-function askAdmin(){ openCodeModal('admin','🔐 Administration','Entrez le mot de passe administrateur'); }
+function askAdmin(){
+  // Déjà connecté (mot de passe mémorisé) : ouvre directement les paramètres.
+  if(_fabAdminCode){ openAdmin(); return; }
+  openCodeModal('admin','🔐 Administration','Entrez le mot de passe administrateur');
+}
+function logoutFabAdmin(){ _fabAdminCode=''; closeOverlay('ovAdmin'); showToast('↩ Admin déconnecté'); }
 function askOperateur(){
   const sel=document.getElementById('opNomSelect');
   sel.innerHTML="<option value=''>— Choisir votre nom —</option>"+operateurs.map(o=>"<option value='"+esc(o.name)+"'>"+esc(o.name)+"</option>").join('');
@@ -986,7 +990,9 @@ function openCodeModal(role,title,meta){
 async function confirmCode(){
   const code=document.getElementById('codeInput').value.trim();
   if(currentRole==='admin'){
-    if(await sha256hex(code)===ADMIN_PW_HASH){ _fabAdminCode=code; closeOverlay('ovCode'); openAdmin(); }
+    let ok=false;
+    try{ const res=await sb.functions.invoke('admin-op',{ body:{ action:'login', adminCode:code } }); ok=!res.error && !!(res.data&&res.data.ok); }catch(e){ ok=false; }
+    if(ok){ _fabAdminCode=code; closeOverlay('ovCode'); openAdmin(); }
     else codeError();
   } else if(currentRole==='encadrant'){
     let ok=false;
@@ -1135,7 +1141,7 @@ function restoreDureeInputs(saved){
   });
 }
 let lastSigOperateur=null;
-function demandeSig(d){ return [d.id,d.statut,d.operateur_nom,d.encadrant_commentaire,d.en_cours_at,d.duree_reelle_min,d.imprime_at,d.encadrant_nom,d.projet,d.priorite,d.archive].join('|'); }
+function demandeSig(d){ return [d.id,d.statut,d.operateur_nom,d.encadrant_commentaire,d.operateur_commentaire,d.en_cours_at,d.duree_reelle_min,d.imprime_at,d.encadrant_nom,d.projet,d.priorite,d.archive].join('|'); }
 // Ordre de la file : en cours d'abord, puis les validées (priorité décroissante, plus anciennes d'abord),
 // puis les terminées (les plus récentes d'abord).
 function ordreFile(a,b){
@@ -1199,16 +1205,30 @@ async function loadOperateur(){
       "<td data-label='Paramètres'>"+params+"</td>"+
       "<td data-label='Comm. étudiant' class='cell-comment'>"+(d.notes?esc(d.notes):'—')+"</td>"+
       "<td data-label='Comm. encadrant' class='cell-comment'>"+(d.encadrant_commentaire?esc(d.encadrant_commentaire):'—')+"</td>"+
+      "<td data-label='Comm. opérateur' class='cell-comment'>"+(d.operateur_commentaire?esc(d.operateur_commentaire):'—')+
+        "<br><button class='btn btn-ghost' style='margin-top:3px' onclick='editOpComment("+d.id+")' title='Modifier le commentaire opérateur'>💬 "+(d.operateur_commentaire?'Modifier':'Ajouter')+"</button></td>"+
       "<td data-label='Statut'>"+statutCell+"</td>"+
       "<td data-label='Actions'>"+act+"</td>"+
       "</tr>";
   }).join('');
   const wrap=box.querySelector('.table-wrap');
   preserveScroll(wrap, ()=>{
-    box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrant</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+    box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrant</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Comm. opérateur</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
   });
   restoreDureeInputs(savedDuree);
   tickCountdowns();
+}
+// Commentaire de l'opérateur sur une demande (visible dans le suivi étudiant).
+async function editOpComment(id){
+  const cur=(demandesById[id]&&demandesById[id].operateur_commentaire)||'';
+  const c=prompt('Commentaire opérateur (visible par l\'étudiant dans le suivi) :', cur);
+  if(c===null) return; // Annuler
+  busy(true,'Enregistrement…');
+  const res=await sb.functions.invoke('demande-op',{ body:{ action:'op-commentaire', id:id, commentaire:c.trim(), operateur:currentOperateurNom, opCode:_operateurCode } });
+  busy(false);
+  if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error==='auth')?'Accès refusé — reconnectez-vous':'Erreur')); return; }
+  showToast(c.trim()?'💬 Commentaire enregistré':'💬 Commentaire supprimé');
+  lastSigOperateur=null; loadOperateur();
 }
 // Réordonne la file : renumérote toutes les demandes validées après le déplacement (déterministe).
 async function deplacerFile(id, dir){
@@ -1406,7 +1426,7 @@ async function exporterCSV(){
   busy(false);
   if(error){ showToast('❌ '+error.message); return; }
   if(!data || !data.length){ showToast('Aucune demande sur cette période'); return; }
-  const cols=['Date','Heure','Projet','N°','Fichier','Étudiant','Encadrant','Opérateur','Machine','Temps estimé','Durée réelle (min)','Type','Usinage','Statut','Commentaire étudiant','Commentaire encadrant'];
+  const cols=['Date','Heure','Projet','N°','Fichier','Étudiant','Encadrant','Opérateur','Machine','Temps estimé','Durée réelle (min)','Type','Usinage','Statut','Commentaire étudiant','Commentaire encadrant','Commentaire opérateur'];
   const lines=[cols.map(csvCell).join(';')];
   data.forEach(d=>{
     const dt=d.created_at?new Date(d.created_at):null;
@@ -1419,7 +1439,7 @@ async function exporterCSV(){
       tempsLabel(d), d.duree_reelle_min||'',
       d.finition==='finition'?'Finition':'Brouillon', d.usinage?'Oui':'Non',
       STATUT_LABEL[d.statut]||d.statut,
-      d.notes||'', d.encadrant_commentaire||''
+      d.notes||'', d.encadrant_commentaire||'', d.operateur_commentaire||''
     ].map(csvCell).join(';'));
   });
   const blob=new Blob(['﻿'+lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
@@ -1485,7 +1505,8 @@ async function rechercherSuivi(silent){
     fileLine+
     (d.operateur_nom?"<br>🛠️ Traité par "+esc(d.operateur_nom):"")+
     (d.notes?"<br>📝 Commentaire étudiant : "+esc(d.notes):"")+
-    (d.encadrant_commentaire?"<br>💬 Commentaire encadrant : "+esc(d.encadrant_commentaire):"")+"</div></div>"+
+    (d.encadrant_commentaire?"<br>💬 Commentaire encadrant : "+esc(d.encadrant_commentaire):"")+
+    (d.operateur_commentaire?"<br>🗨️ Commentaire opérateur : "+esc(d.operateur_commentaire):"")+"</div></div>"+
     "<div style='text-align:right'>"+badge(d.statut)+(end?"<div class='countdown' data-end='"+end+"'></div>":"")+"</div>"+
     "</div></div>";
   }).join('');

@@ -1,12 +1,20 @@
 // Edge Function : admin-op
 // Écritures réservées à l'ADMIN sur le planning (machines, blocages, actions admin sur réservations).
-// Le mot de passe admin est vérifié par son empreinte SHA-256 (variable d'env ADMIN_PW_HASH).
+// Le mot de passe admin est vérifié par son empreinte SHA-256 :
+//   1) ligne 'admin_pw_hash' de la table parametres (prioritaire — modifiable par le super admin)
+//   2) sinon variable d'env ADMIN_PW_HASH (valeur d'origine, secours)
+// Le mot de passe SUPER ADMIN est vérifié par la variable d'env SUPERADMIN_PW_HASH (jamais en table).
 // Entrée POST JSON : { action, adminCode, ...params }
 //
-// Actions (étape 2a) :
+// Actions admin :
+//   login         {} -> { ok, role:'super'|'admin'|null }   (vérifie le mot de passe, public)
 //   saveMachines  { machines:[{name,color,position}], renames:[{from,to}] }
 //   machineStatus { machine, status, status_reason, status_date }
-// (d'autres actions — blocages, réservations admin, undo/redo — seront ajoutées à l'étape 2b)
+//   block / unblock / blockHalfDay, params-list / params-save, limits-save
+// Actions SUPER ADMIN (adminCode = mot de passe super admin) :
+//   super-setAdminCode  { newCode }        change le mot de passe admin (empreinte en table parametres)
+//   super-clearBookings { clearBlocks }    vide bookings + booking_pins (+ disabled_slots si clearBlocks)
+//   super-clearDemandes {}                 vide la table demandes (impression 3D)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
@@ -31,9 +39,55 @@ Deno.serve(async (req) => {
 
     const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-    // Admin (empreinte du mot de passe) — requis pour la plupart des actions.
-    const expected = (Deno.env.get('ADMIN_PW_HASH') || '').trim()
-    const isAdmin = !!expected && (await sha256hex((adminCode ?? '').toString())) === expected
+    // Empreinte du mot de passe fourni.
+    const codeHash = await sha256hex((adminCode ?? '').toString())
+
+    // Super admin : empreinte dans la variable d'env SUPERADMIN_PW_HASH uniquement.
+    const superExpected = (Deno.env.get('SUPERADMIN_PW_HASH') || '').trim()
+    const isSuper = !!superExpected && codeHash === superExpected
+
+    // Admin : empreinte dans parametres ('admin_pw_hash'), sinon variable d'env ADMIN_PW_HASH.
+    // Le mot de passe super admin est aussi accepté partout où l'admin l'est.
+    const { data: apw } = await sb.from('parametres').select('valeur').eq('cle', 'admin_pw_hash').maybeSingle()
+    const expected = ((apw?.valeur) || Deno.env.get('ADMIN_PW_HASH') || '').trim()
+    const isAdmin = isSuper || (!!expected && codeHash === expected)
+
+    // Vérification du mot de passe (connexion admin / super admin des pages web).
+    if (action === 'login') {
+      return json({ ok: isAdmin, role: isSuper ? 'super' : (isAdmin ? 'admin' : null) })
+    }
+
+    // ── Actions SUPER ADMIN ──
+    if (action === 'super-setAdminCode') {
+      if (!isSuper) return json({ ok: false, error: 'unauthorized' }, 401)
+      const newCode = (body.newCode ?? '').toString()
+      if (newCode.length < 4) return json({ ok: false, error: 'trop court (4 caractères minimum)' }, 400)
+      const { error } = await sb.from('parametres').upsert([{ cle: 'admin_pw_hash', valeur: await sha256hex(newCode) }])
+      if (error) throw error
+      return json({ ok: true })
+    }
+
+    if (action === 'super-clearBookings') {
+      if (!isSuper) return json({ ok: false, error: 'unauthorized' }, 401)
+      const delB = await sb.from('bookings').delete({ count: 'exact' }).not('machine', 'is', null)
+      if (delB.error) throw delB.error
+      const delP = await sb.from('booking_pins').delete().not('machine', 'is', null)
+      if (delP.error) throw delP.error
+      let blocked = 0
+      if (body.clearBlocks) {
+        const delD = await sb.from('disabled_slots').delete({ count: 'exact' }).not('machine', 'is', null)
+        if (delD.error) throw delD.error
+        blocked = delD.count || 0
+      }
+      return json({ ok: true, bookings: delB.count || 0, blocked })
+    }
+
+    if (action === 'super-clearDemandes') {
+      if (!isSuper) return json({ ok: false, error: 'unauthorized' }, 401)
+      const del = await sb.from('demandes').delete({ count: 'exact' }).not('id', 'is', null)
+      if (del.error) throw del.error
+      return json({ ok: true, demandes: del.count || 0 })
+    }
 
     // Limites par projet : modifiable par un OPÉRATEUR (code valide) ou l'admin. N'écrit QUE limites_projets.
     if (action === 'limits-save') {
@@ -127,7 +181,7 @@ Deno.serve(async (req) => {
       const { data, error } = await sb.from('parametres').select('cle, valeur')
       if (error) throw error
       const map: Record<string, string> = {}
-      for (const p of (data || []) as any[]) map[p.cle] = p.valeur
+      for (const p of (data || []) as any[]) { if (p.cle !== 'admin_pw_hash') map[p.cle] = p.valeur }
       return json({ ok: true, params: map })
     }
 

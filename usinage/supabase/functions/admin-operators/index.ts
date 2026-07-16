@@ -37,8 +37,13 @@ Deno.serve(async (req) => {
     )
 
     // Admin (empreinte du mot de passe) — requis pour la plupart des actions.
-    const expected = (Deno.env.get('ADMIN_PW_HASH') || '').trim()
-    const isAdmin = !!expected && (await sha256hex((adminCode ?? '').toString())) === expected
+    // Empreinte lue dans parametres ('admin_pw_hash', modifiable par le super admin),
+    // sinon variable d'env ADMIN_PW_HASH. Le mot de passe super admin est aussi accepté.
+    const codeHash = await sha256hex((adminCode ?? '').toString())
+    const { data: apw } = await sb.from('parametres').select('valeur').eq('cle', 'admin_pw_hash').maybeSingle()
+    const expected = ((apw?.valeur) || Deno.env.get('ADMIN_PW_HASH') || '').trim()
+    const superExpected = (Deno.env.get('SUPERADMIN_PW_HASH') || '').trim()
+    const isAdmin = (!!expected && codeHash === expected) || (!!superExpected && codeHash === superExpected)
 
     // Renommage de projet : autorisé à l'admin OU à un encadrant (code encadrant valide).
     if (action === 'etudiants-rename') {

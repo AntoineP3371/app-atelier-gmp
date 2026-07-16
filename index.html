@@ -174,10 +174,8 @@
 // ── Gestion unifiée (opérateurs + étudiants) directement dans le portail ──
 const SUPABASE_URL  = 'https://ggmlfbxppgeivfvlxxrj.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdnbWxmYnhwcGdlaXZmdmx4eHJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNDY5NTIsImV4cCI6MjA5NzkyMjk1Mn0.HvPE2ewB8gFgVzj-xAb1YBxFfn8hTEwOwQLDfF1vgT0';
-// Empreinte SHA-256 du mot de passe admin — le mot de passe en clair n'apparaît pas dans le code.
-// (Camouflage contre la lecture du code source ; ce n'est pas une protection forte.)
-const ADMIN_PW_HASH = 'ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270';
-async function sha256hex(s){ const b=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+// Le mot de passe admin est vérifié CÔTÉ SERVEUR (Edge Function admin-op, action 'login') —
+// plus aucune empreinte n'apparaît dans le code source de la page.
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -203,7 +201,9 @@ function portalAuth(which){
 }
 async function pvCheckPw(){
   const pw=document.getElementById('pvPw').value;
-  if(await sha256hex(pw)===ADMIN_PW_HASH){ _pvAdminPw=pw; openManager(_pvPending); }
+  let ok=false;
+  try{ const res=await sb.functions.invoke('admin-op',{ body:{ action:'login', adminCode:pw } }); ok=!res.error && !!(res.data&&res.data.ok); }catch(e){ ok=false; }
+  if(ok){ _pvAdminPw=pw; openManager(_pvPending); }
   else document.getElementById('pvPwErr').classList.add('show');
 }
 function openManager(which){ if(which==='operateurs') openOperateurs(); else openEtudiants(); }

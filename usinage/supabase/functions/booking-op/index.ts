@@ -36,8 +36,16 @@ Deno.serve(async (req) => {
     const action = b.action
     const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-    const expectedAdmin = (Deno.env.get('ADMIN_PW_HASH') || '').trim()
-    const isAdmin = b.adminCode ? (!!expectedAdmin && (await sha256hex(b.adminCode.toString())) === expectedAdmin) : false
+    // Empreinte admin lue dans parametres ('admin_pw_hash', modifiable par le super admin),
+    // sinon variable d'env ADMIN_PW_HASH. Le mot de passe super admin est aussi accepté.
+    let isAdmin = false
+    if (b.adminCode) {
+      const codeHash = await sha256hex(b.adminCode.toString())
+      const { data: apw } = await sb.from('parametres').select('valeur').eq('cle', 'admin_pw_hash').maybeSingle()
+      const expectedAdmin = ((apw?.valeur) || Deno.env.get('ADMIN_PW_HASH') || '').trim()
+      const superExpected = (Deno.env.get('SUPERADMIN_PW_HASH') || '').trim()
+      isAdmin = (!!expectedAdmin && codeHash === expectedAdmin) || (!!superExpected && codeHash === superExpected)
+    }
 
     const opOk = async (name?: string, code?: string) => {
       if (!name || !code) return false
