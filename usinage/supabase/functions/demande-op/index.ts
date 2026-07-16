@@ -2,7 +2,7 @@
 // Écritures des demandes d'impression 3D, avec vérification CÔTÉ SERVEUR.
 // Auth par action :
 //   create  : public (mais la LIMITE par projet est vérifiée côté serveur)
-//   valider : code encadrant
+//   valider / enc-commentaire : code encadrant
 //   lancer / statut / archive / reorder / op-commentaire : code opérateur (nom + code)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -64,6 +64,16 @@ Deno.serve(async (req) => {
       const { data, error } = await sb.from('demandes').update(patch).eq('id', b.id).select().single()
       if (error) throw error
       return json({ ok: true, demande: data })
+    }
+
+    // Mise à jour du commentaire encadrant SEUL (a posteriori, sans toucher au statut).
+    if (action === 'enc-commentaire') {
+      if (!(await encOk(b.encadrantCode))) return json({ ok: false, error: 'auth' }, 401)
+      const { error } = await sb.from('demandes')
+        .update({ encadrant_commentaire: (b.commentaire ?? '').toString() })
+        .eq('id', b.id)
+      if (error) throw error
+      return json({ ok: true })
     }
 
     if (action === 'lancer') {

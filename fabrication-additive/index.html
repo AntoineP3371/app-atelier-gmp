@@ -378,8 +378,16 @@
   <section id="view-encadrant" class="view">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div><h2>Validation des demandes — <span id="encNomLabel"></span></h2><div class="sub">Validez ou refusez les demandes en attente.</div></div>
-        <button class="btn btn-ghost" onclick="openRenameProjet()">✏️ Renommer un projet</button>
+        <div><h2>Demandes de mes projets — <span id="encNomLabel"></span></h2><div class="sub">Toutes les demandes de vos projets, y compris déjà validées — vous pouvez encore intervenir.</div></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:.8rem;color:var(--muted);font-weight:600">Tri
+            <select id="encSort" onchange="setEncSort(this.value)" style="margin-left:4px">
+              <option value="date">Chronologique</option>
+              <option value="projet">Par projet</option>
+            </select>
+          </label>
+          <button class="btn btn-ghost" onclick="openRenameProjet()">✏️ Renommer un projet</button>
+        </div>
       </div>
       <div id="encadrantResults"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
     </div>
@@ -1061,16 +1069,21 @@ function restoreEncComments(saved){
   });
 }
 let lastSigEncadrant=null;
+let _encSort='date'; // 'date' (chronologique) ou 'projet' (par nom de projet)
+function setEncSort(v){ _encSort=(v==='projet')?'projet':'date'; lastSigEncadrant=null; loadEncadrant(); }
 async function loadEncadrant(silent){
   const box=document.getElementById('encadrantResults');
   if(!silent) box.innerHTML="<div class='loading'><span class='spinner'></span> Chargement…</div>";
-  const {data,error}=await sb.from('demandes').select('*').eq('statut','en_attente').order('created_at');
+  // Toutes les demandes (même déjà validées/refusées/imprimées), sauf archivées.
+  const {data,error}=await sb.from('demandes').select('*').order('created_at');
   if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
   // Ne garder que les demandes des projets dont l'encadrant connecté est responsable
   // (projet sans encadrant défini → visible par tous, pour ne pas bloquer les demandes)
-  const list=(data||[]).filter(d=>{ const encs=projetEncadrants[d.projet]; return !encs||encs.size===0||encs.has(currentEncadrantNom); });
-  if(!list.length){ lastSigEncadrant=null; box.innerHTML="<div class='empty'>Aucune demande en attente pour vos projets 🎉</div>"; return; }
-  const sig=list.map(demandeSig).join(';');
+  const list=(data||[]).filter(d=>!d.archive).filter(d=>{ const encs=projetEncadrants[d.projet]; return !encs||encs.size===0||encs.has(currentEncadrantNom); });
+  if(!list.length){ lastSigEncadrant=null; box.innerHTML="<div class='empty'>Aucune demande pour vos projets 🎉</div>"; return; }
+  // Tri : chronologique (défaut) ou par nom de projet (puis chronologique dans chaque projet)
+  if(_encSort==='projet') list.sort((a,b)=>{ const c=(a.projet||'').localeCompare(b.projet||'','fr'); if(c) return c; return new Date(a.created_at)-new Date(b.created_at); });
+  const sig=_encSort+'|'+list.map(demandeSig).join(';');
   if(sig===lastSigEncadrant) return; // rien n'a changé : pas de ré-affichage
   lastSigEncadrant=sig;
   const savedComments=captureEncComments();
@@ -1081,17 +1094,40 @@ async function loadEncadrant(silent){
 function demandeCardEncadrant(d){
   const opts=paramTags(d);
   const params=machineLabel(d.machine)+" · "+esc(tempsLabel(d))+" · "+(d.finition==='finition'?'Finition':'Brouillon')+(opts.length?" · "+esc(opts.join(', ')):"");
+  // Actions selon le statut : intervention possible a posteriori.
+  //  - en_attente : Valider / Refuser
+  //  - validee    : Refuser (annule la validation) + maj du commentaire
+  //  - refusee    : Valider finalement + maj du commentaire
+  //  - en_cours / imprimee : impression démarrée ou finie → seulement maj du commentaire
+  let btns="<button class='btn btn-ghost' onclick='voir3D("+d.id+")'>👁️ Voir en 3D</button>";
+  if(d.statut==='en_attente'){
+    btns+="<button class='btn btn-green' onclick='validerDemande("+d.id+",true)'>✔️ Valider</button>"+
+          "<button class='btn btn-danger' onclick='validerDemande("+d.id+",false)'>✖️ Refuser</button>";
+  } else {
+    btns+="<button class='btn btn-ghost' onclick='encUpdateComment("+d.id+")'>💬 Mettre à jour le commentaire</button>";
+    if(d.statut==='validee') btns+="<button class='btn btn-danger' onclick='validerDemande("+d.id+",false)' title='Annule la validation : la demande repasse en refusée'>✖️ Refuser a posteriori</button>";
+    if(d.statut==='refusee') btns+="<button class='btn btn-green' onclick='validerDemande("+d.id+",true)'>✔️ Valider finalement</button>";
+  }
+  const infos=(d.encadrant_nom?"<br>✔️ Traité par "+esc(d.encadrant_nom):"")+(d.operateur_nom?"<br>🛠️ "+esc(d.operateur_nom):"");
   return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>📄 "+esc(d.fichier_nom)+"</div>"+
-    "<div class='dc-meta'>👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · "+esc(d.projet)+" · n°"+(d.numero||'?')+"<br>"+
-    params+(d.bbox?" · 📐 "+esc(d.bbox):"")+(d.notes?"<br>📝 "+esc(d.notes):"")+"</div></div>"+
+    "<div class='dc-meta'>👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · <b>"+esc(d.projet)+"</b> · n°"+(d.numero||'?')+" · "+dateLabel(d.created_at)+"<br>"+
+    params+(d.bbox?" · 📐 "+esc(d.bbox):"")+(d.notes?"<br>📝 "+esc(d.notes):"")+infos+"</div></div>"+
     "<div>"+badge(d.statut)+"</div></div>"+
-    "<textarea id='enccom-"+d.id+"' class='enc-comment' rows='2' placeholder='Commentaire opérateur (optionnel)…'></textarea>"+
-    "<div class='dc-actions'>"+
-    "<button class='btn btn-ghost' onclick='voir3D("+d.id+")'>👁️ Voir en 3D</button>"+
-    "<button class='btn btn-green' onclick='validerDemande("+d.id+",true)'>✔️ Valider</button>"+
-    "<button class='btn btn-danger' onclick='validerDemande("+d.id+",false)'>✖️ Refuser</button>"+
-    "</div></div>";
+    "<textarea id='enccom-"+d.id+"' class='enc-comment' rows='2' placeholder='Commentaire encadrant (optionnel)…'>"+esc(d.encadrant_commentaire||'')+"</textarea>"+
+    "<div class='dc-actions'>"+btns+"</div></div>";
+}
+function dateLabel(iso){ if(!iso) return ''; const dt=new Date(iso); return dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
+// Met à jour le commentaire encadrant sans changer le statut de la demande.
+async function encUpdateComment(id){
+  const el=document.getElementById('enccom-'+id);
+  const commentaire=el?el.value.trim():'';
+  busy(true,'Enregistrement…');
+  const res=await sb.functions.invoke('demande-op',{ body:{ action:'enc-commentaire', id:id, commentaire:commentaire, encadrantCode:_encadrantCode } });
+  busy(false);
+  if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error==='auth')?'Accès refusé — reconnectez-vous':'Erreur')); return; }
+  showToast('💬 Commentaire enregistré');
+  lastSigEncadrant=null; loadEncadrant(true);
 }
 async function validerDemande(id, ok){
   const comEl=document.getElementById('enccom-'+id);
