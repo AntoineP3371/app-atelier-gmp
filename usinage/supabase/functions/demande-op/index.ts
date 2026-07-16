@@ -55,11 +55,15 @@ Deno.serve(async (req) => {
 
     if (action === 'valider') {
       if (!(await encOk(b.encadrantCode))) return json({ ok: false, error: 'auth' }, 401)
+      const com = (b.commentaire ?? '').toString()
       const patch = {
         statut: b.ok ? 'validee' : 'refusee',
         encadrant_nom: (b.encadrantNom ?? '').toString(),
         encadrant_valide_at: new Date().toISOString(),
-        encadrant_commentaire: (b.commentaire ?? '').toString(),
+        encadrant_commentaire: com,
+        // auteur + horodatage du commentaire (null si commentaire vide)
+        encadrant_commentaire_par: com ? (b.encadrantNom ?? '').toString() : null,
+        encadrant_commentaire_at: com ? new Date().toISOString() : null,
       }
       const { data, error } = await sb.from('demandes').update(patch).eq('id', b.id).select().single()
       if (error) throw error
@@ -69,8 +73,13 @@ Deno.serve(async (req) => {
     // Mise à jour du commentaire encadrant SEUL (a posteriori, sans toucher au statut).
     if (action === 'enc-commentaire') {
       if (!(await encOk(b.encadrantCode))) return json({ ok: false, error: 'auth' }, 401)
+      const com = (b.commentaire ?? '').toString()
       const { error } = await sb.from('demandes')
-        .update({ encadrant_commentaire: (b.commentaire ?? '').toString() })
+        .update({
+          encadrant_commentaire: com,
+          encadrant_commentaire_par: com ? (b.encadrantNom ?? '').toString() : null,
+          encadrant_commentaire_at: com ? new Date().toISOString() : null,
+        })
         .eq('id', b.id)
       if (error) throw error
       return json({ ok: true })
@@ -98,8 +107,13 @@ Deno.serve(async (req) => {
 
     if (action === 'op-commentaire') {
       if (!(await opOk(b.operateur, b.opCode))) return json({ ok: false, error: 'auth' }, 401)
+      const com = (b.commentaire ?? '').toString()
       const { error } = await sb.from('demandes')
-        .update({ operateur_commentaire: (b.commentaire ?? '').toString() })
+        .update({
+          operateur_commentaire: com,
+          operateur_commentaire_par: com ? (b.operateur ?? '').toString() : null,
+          operateur_commentaire_at: com ? new Date().toISOString() : null,
+        })
         .eq('id', b.id)
       if (error) throw error
       return json({ ok: true })

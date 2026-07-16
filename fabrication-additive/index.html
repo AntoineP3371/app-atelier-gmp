@@ -164,6 +164,7 @@
   .badge.en_cours{background:#e0e7ff;color:#4338ca}
   .badge.imprimee{background:var(--green-light);color:var(--green)}
   .badge.refusee{background:var(--danger-light);color:var(--danger)}
+  .badge.attente_info{background:#ffedd5;color:#c2410c}
 
   /* Liste de demandes (encadrant / suivi) */
   .demande-card{border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;background:var(--surface);border-left-width:5px}
@@ -172,11 +173,14 @@
   .demande-card.st-en_cours{background:#eef2ff;border-left-color:#4338ca}
   .demande-card.st-imprimee{background:#f0fdf4;border-left-color:var(--green)}
   .demande-card.st-refusee{background:#fef2f2;border-left-color:var(--danger)}
+  .demande-card.st-attente_info{background:#fff7ed;border-left-color:#ea580c}
   .op-table tbody tr.st-en_attente td{background:#fffbeb}
   .op-table tbody tr.st-validee td{background:#f0f9ff}
   .op-table tbody tr.st-en_cours td{background:#eef2ff}
   .op-table tbody tr.st-imprimee td{background:#f0fdf4}
   .op-table tbody tr.st-refusee td{background:#fef2f2}
+  .op-table tbody tr.st-attente_info td{background:#fff7ed}
+  .com-meta{display:block;font-size:.68rem;color:var(--muted);margin-top:2px}
   .op-table tbody tr.st-en_attente td:first-child,.op-table tbody tr.st-validee td:first-child,.op-table tbody tr.st-en_cours td:first-child,.op-table tbody tr.st-imprimee td:first-child,.op-table tbody tr.st-refusee td:first-child{border-left:4px solid transparent}
   .op-table tbody tr.st-en_attente td:first-child{border-left-color:var(--amber)}
   .op-table tbody tr.st-validee td:first-child{border-left-color:var(--primary)}
@@ -737,7 +741,8 @@ function num(v,def){ const n=parseFloat(v); return isNaN(n)?def:n; }
 
 const STATUT_LABEL = {
   en_attente:'En attente de validation', validee:'Validée',
-  en_cours:"En cours d'impression", imprimee:'✅ Impression terminée', refusee:'Refusée'
+  en_cours:"En cours d'impression", imprimee:'✅ Impression terminée', refusee:'Refusée',
+  attente_info:"🙋 En attente d'information"
 };
 function badge(st){ return "<span class='badge "+st+"'>"+esc(STATUT_LABEL[st]||st)+"</span>"; }
 function machineLabel(m){ const mm=machineByNom(m); return mm ? (mm.emoji+' '+mm.nom) : (m||'—'); }
@@ -1212,18 +1217,34 @@ function demandeCardEncadrant(d){
   return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>📄 "+esc(d.fichier_nom)+"</div>"+
     "<div class='dc-meta'>👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · <b>"+esc(d.projet)+"</b> · n°"+(d.numero||'?')+" · "+dateLabel(d.created_at)+"<br>"+
-    params+(d.bbox?" · 📐 "+esc(d.bbox):"")+(d.notes?"<br>📝 "+esc(d.notes):"")+infos+"</div></div>"+
+    params+(d.bbox?" · 📐 "+esc(d.bbox):"")+
+    comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
+    comLine('🗨️','opérateur', d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at, d.operateur_commentaire)+
+    infos+"</div></div>"+
     "<div>"+badge(d.statut)+"</div></div>"+
     "<textarea id='enccom-"+d.id+"' class='enc-comment' rows='2' placeholder='Commentaire encadrant (optionnel)…'>"+esc(d.encadrant_commentaire||'')+"</textarea>"+
     "<div class='dc-actions'>"+btns+"</div></div>";
 }
 function dateLabel(iso){ if(!iso) return ''; const dt=new Date(iso); return dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
+function dateHeureLabel(iso){ if(!iso) return ''; const dt=new Date(iso); return dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'})+' à '+dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }
+// Ligne de commentaire avec auteur identifié et horodatage.
+function comLine(emoji, role, nom, at, txt){
+  if(!txt) return '';
+  const who=nom?(esc(nom)+' — '+role):role;
+  const when=at?(' le '+dateHeureLabel(at)):'';
+  return "<br>"+emoji+" <b>"+who+"</b>"+when+" : "+esc(txt);
+}
+// Petite mention « par X le … » sous un commentaire (tableau opérateur).
+function comMeta(nom, at){
+  if(!nom && !at) return '';
+  return "<span class='com-meta'>par "+esc(nom||'?')+(at?(' le '+dateHeureLabel(at)):'')+"</span>";
+}
 // Met à jour le commentaire encadrant sans changer le statut de la demande.
 async function encUpdateComment(id){
   const el=document.getElementById('enccom-'+id);
   const commentaire=el?el.value.trim():'';
   busy(true,'Enregistrement…');
-  const res=await sb.functions.invoke('demande-op',{ body:{ action:'enc-commentaire', id:id, commentaire:commentaire, encadrantCode:_encadrantCode } });
+  const res=await sb.functions.invoke('demande-op',{ body:{ action:'enc-commentaire', id:id, commentaire:commentaire, encadrantCode:_encadrantCode, encadrantNom:currentEncadrantNom } });
   busy(false);
   if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error==='auth')?'Accès refusé — reconnectez-vous':'Erreur')); return; }
   showToast('💬 Commentaire enregistré');
@@ -1300,11 +1321,11 @@ function restoreDureeInputs(saved){
   });
 }
 let lastSigOperateur=null;
-function demandeSig(d){ return [d.id,d.statut,d.operateur_nom,d.encadrant_commentaire,d.operateur_commentaire,d.en_cours_at,d.duree_reelle_min,d.imprime_at,d.encadrant_nom,d.projet,d.priorite,d.archive].join('|'); }
+function demandeSig(d){ return [d.id,d.statut,d.operateur_nom,d.encadrant_commentaire,d.operateur_commentaire,d.encadrant_commentaire_at,d.operateur_commentaire_at,d.en_cours_at,d.duree_reelle_min,d.imprime_at,d.encadrant_nom,d.projet,d.priorite,d.archive].join('|'); }
 // Ordre de la file : en cours d'abord, puis les validées (priorité décroissante, plus anciennes d'abord),
 // puis les terminées (les plus récentes d'abord).
 function ordreFile(a,b){
-  const rank={en_cours:0, validee:1, imprimee:2};
+  const rank={en_cours:0, attente_info:1, validee:2, imprimee:3};
   const ra=rank[a.statut]??3, rb=rank[b.statut]??3;
   if(ra!==rb) return ra-rb;
   if(a.statut==='validee'){ if((b.priorite||0)!==(a.priorite||0)) return (b.priorite||0)-(a.priorite||0); return new Date(a.created_at)-new Date(b.created_at); }
@@ -1313,7 +1334,7 @@ function ordreFile(a,b){
 }
 async function loadOperateur(){
   const box=document.getElementById('operateurResults');
-  const res=await sb.from('demandes').select('*').in('statut',['validee','en_cours','imprimee']);
+  const res=await sb.from('demandes').select('*').in('statut',['validee','en_cours','imprimee','attente_info']);
   if(res.error){ box.innerHTML="<div class='empty'>Erreur : "+esc(res.error.message)+"</div>"; return; }
   const data=(res.data||[]).filter(d=>!d.archive); // filtrage archive côté client (résilient si la colonne n'existe pas encore)
   if(!data.length){ lastSigOperateur=null; box.innerHTML="<div class='empty'>Aucune impression à traiter pour le moment.</div>"; return; }
@@ -1353,6 +1374,7 @@ async function loadOperateur(){
       "<span class='duree-wrap' title='Durée réelle d\\'impression'><input type='number' class='op-duree' id='dureeh-"+d.id+"' value='"+dh+"' min='0'> h <input type='number' class='op-duree' id='dureem-"+d.id+"' value='"+dm+"' min='0' max='59'> min</span>"+
       "<button class='btn btn-amber' onclick='lancerImpression("+d.id+")'>▶️ Lancer</button>"+
       "<button class='btn btn-green' onclick='majStatut("+d.id+",\"imprimee\")'>✅ Terminée</button>"+
+      (d.statut!=='attente_info'?"<button class='btn btn-amber' onclick='majStatut("+d.id+",\"attente_info\")' title='Signaler que le demandeur doit venir vous voir pour confirmer des éléments'>🙋 Att. info</button>":"")+
       "<button class='btn btn-nav' onclick='majStatut("+d.id+",\"validee\")' title='Remettre en attente'>↩︎</button>"+
       (d.statut==='imprimee'?"<button class='btn btn-ghost' onclick='archiver("+d.id+")' title='Archiver'>🗄️</button>":"")+
       "</div>";
@@ -1362,9 +1384,9 @@ async function loadOperateur(){
       "<td data-label='Étudiant'>"+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</td>"+
       "<td data-label='Encadrant'>"+esc(d.encadrant_nom||'—')+"</td>"+
       "<td data-label='Paramètres'>"+params+"</td>"+
-      "<td data-label='Comm. étudiant' class='cell-comment'>"+(d.notes?esc(d.notes):'—')+"</td>"+
-      "<td data-label='Comm. encadrant' class='cell-comment'>"+(d.encadrant_commentaire?esc(d.encadrant_commentaire):'—')+"</td>"+
-      "<td data-label='Comm. opérateur' class='cell-comment'>"+(d.operateur_commentaire?esc(d.operateur_commentaire):'—')+
+      "<td data-label='Comm. étudiant' class='cell-comment'>"+(d.notes?esc(d.notes)+comMeta((d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at):'—')+"</td>"+
+      "<td data-label='Comm. encadrant' class='cell-comment'>"+(d.encadrant_commentaire?esc(d.encadrant_commentaire)+comMeta(d.encadrant_commentaire_par||d.encadrant_nom, d.encadrant_commentaire_at||d.encadrant_valide_at):'—')+"</td>"+
+      "<td data-label='Comm. opérateur' class='cell-comment'>"+(d.operateur_commentaire?esc(d.operateur_commentaire)+comMeta(d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at):'—')+
         "<br><button class='btn btn-ghost' style='margin-top:3px' onclick='editOpComment("+d.id+")' title='Modifier le commentaire opérateur'>💬 "+(d.operateur_commentaire?'Modifier':'Ajouter')+"</button></td>"+
       "<td data-label='Statut'>"+statutCell+"</td>"+
       "<td data-label='Actions'>"+act+"</td>"+
@@ -1538,7 +1560,7 @@ async function loadStats(){
   const {data,error}=await q;
   if(error){ box.innerHTML="<div class='empty'>Erreur : "+esc(error.message)+"</div>"; return; }
   const d=data||[];
-  const byStatut={en_attente:0,validee:0,en_cours:0,imprimee:0,refusee:0};
+  const byStatut={en_attente:0,validee:0,en_cours:0,imprimee:0,refusee:0,attente_info:0};
   const byMachine={}, byFormation={}, byProjet={};
   let tempsTotal=0;
   d.forEach(x=>{
@@ -1558,6 +1580,7 @@ async function loadStats(){
     card('En attente', byStatut.en_attente||0)+
     card('Validées', byStatut.validee||0)+
     card('En cours', byStatut.en_cours||0)+
+    card('Attente info', byStatut.attente_info||0)+
     card('Terminées', byStatut.imprimee||0,'ok')+
     card('Refusées', byStatut.refusee||0,'ko')+
     card("Temps d'impression", fmtDuree(tempsTotal))+
@@ -1740,9 +1763,10 @@ async function rechercherSuivi(silent){
     (d.encadrant_nom?"<br>✔️ Validé par "+esc(d.encadrant_nom):"")+
     fileLine+
     (d.operateur_nom?"<br>🛠️ Traité par "+esc(d.operateur_nom):"")+
-    (d.notes?"<br>📝 Commentaire étudiant : "+esc(d.notes):"")+
-    (d.encadrant_commentaire?"<br>💬 Commentaire encadrant : "+esc(d.encadrant_commentaire):"")+
-    (d.operateur_commentaire?"<br>🗨️ Commentaire opérateur : "+esc(d.operateur_commentaire):"")+"</div></div>"+
+    (d.statut==='attente_info'?"<br><b style='color:#c2410c'>🙋 L'opérateur a besoin de précisions : venez le voir à l'atelier pour confirmer des éléments de votre demande.</b>":"")+
+    comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
+    comLine('💬','encadrant', d.encadrant_commentaire_par||d.encadrant_nom, d.encadrant_commentaire_at||d.encadrant_valide_at, d.encadrant_commentaire)+
+    comLine('🗨️','opérateur', d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at, d.operateur_commentaire)+"</div></div>"+
     "<div style='text-align:right'>"+badge(d.statut)+(end?"<div class='countdown' data-end='"+end+"'></div>":"")+"</div>"+
     "</div></div>";
   }).join('');
