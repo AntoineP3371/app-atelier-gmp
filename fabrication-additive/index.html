@@ -477,9 +477,32 @@
     <div id="machinesEditor"></div>
     <button class="btn btn-ghost" style="width:100%;margin-top:6px" onclick="addMachineRow()">＋ Ajouter une machine</button>
     <div class="hint" style="margin-top:6px">Temps estimé ≈ volume × taux ÷ débit + temps fixe, ×1,2 par option (taraudage / insert / usinage).</div>
+
+    <!-- Section SUPER ADMIN (visible uniquement avec le mot de passe super admin) -->
+    <div id="fabSuperSection" style="display:none">
+      <div style="font-size:.8rem;font-weight:700;color:#b91c1c;margin:14px 0 4px">🛡 Super admin</div>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+        <div style="font-size:.8rem;font-weight:700;margin-bottom:4px">🔑 Changer le mot de passe admin</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input type="password" id="fabNewPw" placeholder="Nouveau mot de passe (4 car. min.)" autocomplete="off" style="flex:1;min-width:150px">
+          <input type="password" id="fabNewPw2" placeholder="Confirmer" autocomplete="off" style="flex:1;min-width:120px">
+          <button class="btn btn-admin" onclick="fabChangeAdminPw()">Changer</button>
+        </div>
+      </div>
+      <div style="border:1px solid #fca5a5;border-radius:8px;padding:10px">
+        <div style="font-size:.8rem;font-weight:700;color:#b91c1c;margin-bottom:4px">🗑 Effacer toutes les demandes d'impression</div>
+        <div class="hint" style="margin:0 0 6px">Supprime définitivement toutes les demandes (y compris archivées). Les fichiers déposés sur le Drive ne sont pas supprimés.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input type="text" id="fabConfirmD" placeholder="Tapez EFFACER pour confirmer" autocomplete="off" style="flex:1;min-width:180px">
+          <button class="btn btn-danger" onclick="fabClearDemandes()">Effacer les demandes</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-actions">
-      <button class="btn btn-danger" style="margin-right:auto" onclick="logoutFabAdmin()" title="Oublier le mot de passe admin sur cet appareil">↩ Déconnecter</button>
-      <button class="btn btn-close" onclick="closeOverlay('ovAdmin')">Fermer</button>
+      <button class="btn btn-ghost" id="fabUndoBtn" onclick="undoParams()" title="Annuler le dernier enregistrement des paramètres" disabled>↶ Annuler</button>
+      <button class="btn btn-ghost" id="fabRedoBtn" onclick="redoParams()" title="Rétablir l'enregistrement annulé" disabled>↷ Rétablir</button>
+      <button class="btn btn-danger" style="margin-right:auto" onclick="closeOverlay('ovAdmin')" title="Fermer et oublier le mot de passe admin">↩ Déconnecter</button>
       <button class="btn btn-admin" onclick="saveAdmin()">💾 Enregistrer</button>
     </div>
   </div>
@@ -611,6 +634,7 @@ let currentOperateurNom = '';
 let currentRole = null;      // 'encadrant' | 'admin'
 let _encadrantCode = '';     // code encadrant saisi (mémorisé pour les appels aux fonctions)
 let _fabAdminCode  = '';     // mot de passe admin saisi (mémorisé pour les appels aux fonctions)
+let _fabIsSuper    = false;  // vrai si le mot de passe saisi est celui du SUPER admin
 let _operateurCode = '';     // code opérateur saisi (mémorisé pour les appels aux fonctions)
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -620,7 +644,11 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),3000); }
 function busy(on,txt){ document.getElementById('busyTxt').textContent=txt||'Traitement…'; document.getElementById('busy').classList.toggle('show',!!on); }
 function openOverlay(id){ document.getElementById(id).classList.add('open'); }
-function closeOverlay(id){ document.getElementById(id).classList.remove('open'); }
+function closeOverlay(id){
+  document.getElementById(id).classList.remove('open');
+  // Fermer la fenêtre admin = déconnexion automatique (le mot de passe est oublié).
+  if(id==='ovAdmin' && _fabAdminCode){ _fabAdminCode=''; _fabIsSuper=false; showToast('↩ Admin déconnecté'); }
+}
 function num(v,def){ const n=parseFloat(v); return isNaN(n)?def:n; }
 
 const STATUT_LABEL = {
@@ -952,12 +980,7 @@ function closeFsViewer(){ closeOverlay('ovViewer'); if(fsViewer){ try{fsViewer.D
 //  SAISIE DE CODE (générique)
 // ─────────────────────────────────────────────────────────────────────────
 function askEncadrant(){ openCodeModal('encadrant','Espace encadrant','Code de validation à 4 chiffres.'); }
-function askAdmin(){
-  // Déjà connecté (mot de passe mémorisé) : ouvre directement les paramètres.
-  if(_fabAdminCode){ openAdmin(); return; }
-  openCodeModal('admin','🔐 Administration','Entrez le mot de passe administrateur');
-}
-function logoutFabAdmin(){ _fabAdminCode=''; closeOverlay('ovAdmin'); showToast('↩ Admin déconnecté'); }
+function askAdmin(){ openCodeModal('admin','🔐 Administration','Entrez le mot de passe administrateur'); }
 function askOperateur(){
   const sel=document.getElementById('opNomSelect');
   sel.innerHTML="<option value=''>— Choisir votre nom —</option>"+operateurs.map(o=>"<option value='"+esc(o.name)+"'>"+esc(o.name)+"</option>").join('');
@@ -990,9 +1013,9 @@ function openCodeModal(role,title,meta){
 async function confirmCode(){
   const code=document.getElementById('codeInput').value.trim();
   if(currentRole==='admin'){
-    let ok=false;
-    try{ const res=await sb.functions.invoke('admin-op',{ body:{ action:'login', adminCode:code } }); ok=!res.error && !!(res.data&&res.data.ok); }catch(e){ ok=false; }
-    if(ok){ _fabAdminCode=code; closeOverlay('ovCode'); openAdmin(); }
+    let role=null;
+    try{ const res=await sb.functions.invoke('admin-op',{ body:{ action:'login', adminCode:code } }); if(!res.error && res.data && res.data.ok) role=res.data.role; }catch(e){ role=null; }
+    if(role){ _fabAdminCode=code; _fabIsSuper=(role==='super'); closeOverlay('ovCode'); openAdmin(); }
     else codeError();
   } else if(currentRole==='encadrant'){
     let ok=false;
@@ -1520,12 +1543,89 @@ async function rechercherSuivi(silent){
 async function openAdmin(){
   let codeEnc='0000';
   try{ const {data}=await sb.functions.invoke('admin-op',{ body:{ action:'params-list', adminCode:_fabAdminCode } }); if(data&&data.ok&&data.params) codeEnc=data.params.code_encadrant||'0000'; }catch(e){}
+  fillAdminForm(codeEnc);
+  _fabParamsCurrent=currentParamsRows(codeEnc);
+  document.getElementById('fabSuperSection').style.display=_fabIsSuper?'':'none';
+  updateParamsUndoUI();
+  openOverlay('ovAdmin');
+}
+// Remplit le formulaire Paramètres avec les valeurs actuellement chargées.
+function fillAdminForm(codeEnc){
   document.getElementById('pCodeEnc').value=codeEnc;
   document.getElementById('pLimite').value=limiteDefaut();
   renderNotifOperateurs();
   document.getElementById('machinesEditor').innerHTML='';
   MACHINES.forEach(m=>addMachineRow(m));
-  openOverlay('ovAdmin');
+}
+
+// ── Historique Annuler / Rétablir des paramètres (persisté sur cet appareil) ──
+// Chaque entrée = les 4 lignes écrites par « Enregistrer » (code encadrant, limite, machines, notifs).
+let _fabParamsHist=(function(){ try{ const h=JSON.parse(localStorage.getItem('fabParamsHist')); if(h&&Array.isArray(h.undo)&&Array.isArray(h.redo)) return h; }catch(e){} return {undo:[],redo:[]}; })();
+let _fabParamsCurrent=null; // dernier état enregistré (instantané pris à l'ouverture de la fenêtre)
+function currentParamsRows(codeEnc){
+  return [
+    {cle:'code_encadrant',        valeur:(codeEnc==null?'0000':String(codeEnc))},
+    {cle:'limite_defaut',         valeur:String(limiteDefaut())},
+    {cle:'machines',              valeur:(PARAMS.machines!==undefined?PARAMS.machines:JSON.stringify(MACHINES))},
+    {cle:'operateurs_impression', valeur:(PARAMS.operateurs_impression!==undefined?PARAMS.operateurs_impression:JSON.stringify(null))}
+  ];
+}
+function saveParamsHist(){
+  if(_fabParamsHist.undo.length>20) _fabParamsHist.undo=_fabParamsHist.undo.slice(-20);
+  localStorage.setItem('fabParamsHist', JSON.stringify(_fabParamsHist));
+  updateParamsUndoUI();
+}
+function updateParamsUndoUI(){
+  const u=document.getElementById('fabUndoBtn'), r=document.getElementById('fabRedoBtn');
+  if(u) u.disabled=!_fabParamsHist.undo.length || !_fabParamsCurrent;
+  if(r) r.disabled=!_fabParamsHist.redo.length || !_fabParamsCurrent;
+}
+async function applyParamsRows(rows){
+  busy(true,'Restauration…');
+  const res=await sb.functions.invoke('admin-op',{ body:{ action:'params-save', adminCode:_fabAdminCode, params:rows } });
+  busy(false);
+  if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error)||'Échec')); return false; }
+  await loadParams(); buildMachines(); onMachineChange(); updateProjetProgress();
+  const ce=rows.find(x=>x.cle==='code_encadrant');
+  fillAdminForm(ce?ce.valeur:'0000');
+  return true;
+}
+async function undoParams(){
+  if(!_fabParamsHist.undo.length || !_fabParamsCurrent) return;
+  const snap=_fabParamsHist.undo.pop();
+  if(await applyParamsRows(snap)){ _fabParamsHist.redo.push(_fabParamsCurrent); _fabParamsCurrent=snap; showToast('↶ Paramètres précédents restaurés'); }
+  else _fabParamsHist.undo.push(snap); // échec : on ne perd pas l'historique
+  saveParamsHist();
+}
+async function redoParams(){
+  if(!_fabParamsHist.redo.length || !_fabParamsCurrent) return;
+  const snap=_fabParamsHist.redo.pop();
+  if(await applyParamsRows(snap)){ _fabParamsHist.undo.push(_fabParamsCurrent); _fabParamsCurrent=snap; showToast('↷ Paramètres rétablis'); }
+  else _fabParamsHist.redo.push(snap);
+  saveParamsHist();
+}
+
+// ── Actions SUPER ADMIN (impression 3D) ──
+async function fabChangeAdminPw(){
+  const p1=document.getElementById('fabNewPw').value, p2=document.getElementById('fabNewPw2').value;
+  if(p1.length<4){ showToast('⚠️ Mot de passe trop court (4 caractères minimum).'); return; }
+  if(p1!==p2){ showToast('⚠️ Les deux mots de passe ne correspondent pas.'); return; }
+  busy(true,'Changement…');
+  const res=await sb.functions.invoke('admin-op',{ body:{ action:'super-setAdminCode', adminCode:_fabAdminCode, newCode:p1 } });
+  busy(false);
+  if(res.error || !res.data || !res.data.ok){ showToast('❌ Échec du changement de mot de passe.'); return; }
+  showToast('✅ Mot de passe admin changé.');
+  document.getElementById('fabNewPw').value=''; document.getElementById('fabNewPw2').value='';
+}
+async function fabClearDemandes(){
+  if(document.getElementById('fabConfirmD').value.trim().toUpperCase()!=='EFFACER'){ showToast('⚠️ Tapez EFFACER dans le champ pour confirmer.'); return; }
+  busy(true,'Effacement…');
+  const res=await sb.functions.invoke('admin-op',{ body:{ action:'super-clearDemandes', adminCode:_fabAdminCode } });
+  busy(false);
+  if(res.error || !res.data || !res.data.ok){ showToast("❌ Échec de l'effacement."); return; }
+  showToast('✅ '+(res.data.demandes||0)+' demande(s) effacée(s).');
+  document.getElementById('fabConfirmD').value='';
+  updateProjetProgress();
 }
 function renderNotifOperateurs(){
   const box=document.getElementById('notifOperateurs');
@@ -1573,8 +1673,10 @@ async function saveAdmin(){
   const res=await sb.functions.invoke('admin-op',{ body:{ action:'params-save', adminCode:_fabAdminCode, params:rows } });
   busy(false);
   if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error)||'Échec')); return; }
+  // Historique : l'état précédent devient annulable, le rétablissement repart de zéro.
+  if(_fabParamsCurrent){ _fabParamsHist.undo.push(_fabParamsCurrent); _fabParamsHist.redo=[]; _fabParamsCurrent=rows; saveParamsHist(); }
   await loadParams(); buildMachines(); onMachineChange(); updateProjetProgress();
-  closeOverlay('ovAdmin'); showToast('💾 Paramètres enregistrés');
+  closeOverlay('ovAdmin'); showToast('💾 Paramètres enregistrés — admin déconnecté');
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@
 //   block / unblock / blockHalfDay, params-list / params-save, limits-save
 // Actions SUPER ADMIN (adminCode = mot de passe super admin) :
 //   super-setAdminCode  { newCode }        change le mot de passe admin (empreinte en table parametres)
-//   super-clearBookings { clearBlocks }    vide bookings + booking_pins (+ disabled_slots si clearBlocks)
+//   super-clearBookings { clearBookings, clearBlocks }  vide bookings+booking_pins et/ou disabled_slots
 //   super-clearDemandes {}                 vide la table demandes (impression 3D)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -69,17 +69,24 @@ Deno.serve(async (req) => {
 
     if (action === 'super-clearBookings') {
       if (!isSuper) return json({ ok: false, error: 'unauthorized' }, 401)
-      const delB = await sb.from('bookings').delete({ count: 'exact' }).not('machine', 'is', null)
-      if (delB.error) throw delB.error
-      const delP = await sb.from('booking_pins').delete().not('machine', 'is', null)
-      if (delP.error) throw delP.error
-      let blocked = 0
-      if (body.clearBlocks) {
+      // Choix indépendant : réservations et/ou créneaux bloqués (au moins l'un des deux).
+      const wantBookings = body.clearBookings !== false   // true par défaut (rétro-compatible)
+      const wantBlocks = !!body.clearBlocks
+      if (!wantBookings && !wantBlocks) return json({ ok: false, error: 'rien à effacer' }, 400)
+      let bookings = 0, blocked = 0
+      if (wantBookings) {
+        const delB = await sb.from('bookings').delete({ count: 'exact' }).not('machine', 'is', null)
+        if (delB.error) throw delB.error
+        const delP = await sb.from('booking_pins').delete().not('machine', 'is', null)
+        if (delP.error) throw delP.error
+        bookings = delB.count || 0
+      }
+      if (wantBlocks) {
         const delD = await sb.from('disabled_slots').delete({ count: 'exact' }).not('machine', 'is', null)
         if (delD.error) throw delD.error
         blocked = delD.count || 0
       }
-      return json({ ok: true, bookings: delB.count || 0, blocked })
+      return json({ ok: true, bookings, blocked })
     }
 
     if (action === 'super-clearDemandes') {

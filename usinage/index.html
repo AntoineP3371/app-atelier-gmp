@@ -898,7 +898,7 @@ function openModal(html,fullscreen){
   var f=document.querySelector("#modal input");
   if(f) setTimeout(()=>f.focus(),80);
 }
-function closeModal(){ document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); document.body.classList.remove('carousel-open'); stopCarousel(); openModalName=null; sessionStorage.removeItem('pendingModal'); }
+function closeModal(){ var wasSuper=(openModalName==='superadmin'); document.getElementById("overlay").classList.remove("open"); document.getElementById("modal").classList.remove("fullscreen"); document.body.classList.remove('carousel-open'); stopCarousel(); openModalName=null; sessionStorage.removeItem('pendingModal'); if(wasSuper && isAdmin){ logoutAdmin(); showToast("↩ Déconnecté du mode admin"); } }
 function stopCarousel(){ if(carouselTimer){ clearInterval(carouselTimer); carouselTimer=null; } }
 function startMachineCarousel(){ stopCarousel(); if(!machines.length){ alert("Aucune machine."); return; } openModalName='carouselview'; carouselIndex=0; document.body.classList.add('carousel-open'); openFullScreenCarouselPage(); carouselTimer=setInterval(nextCarouselPage,5000); }
 function getCarouselPages(){
@@ -1026,10 +1026,11 @@ function applyAdminUI(){
 
 // ─── SUPER ADMIN ─────────────────────────────────────────────────────────────
 // Panneau réservé au détenteur du mot de passe super admin (SUPERADMIN_PW_HASH côté serveur).
-function openSuperAdmin(){
+// Fermer ce panneau (bouton ou clic à côté) déconnecte complètement du mode admin.
+function openSuperAdmin(){ openModalName='superadmin';
   openModal(
     "<h2>🛡 Super admin</h2>"+
-    "<div class='meta' style='margin-bottom:14px'>Actions sensibles — à utiliser avec précaution.</div>"+
+    "<div class='meta' style='margin-bottom:14px'>Actions sensibles — fermer cette fenêtre vous déconnecte.</div>"+
 
     "<div class='form-group' style='border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px'>"+
       "<label style='font-weight:700'>🔑 Changer le mot de passe admin</label>"+
@@ -1039,24 +1040,20 @@ function openSuperAdmin(){
     "</div>"+
 
     "<div class='form-group' style='border:1px solid #fca5a5;border-radius:8px;padding:12px;margin-bottom:12px'>"+
-      "<label style='font-weight:700;color:#b91c1c'>🗑 Effacer toutes les réservations</label>"+
-      "<div class='meta'>Supprime définitivement toutes les réservations du planning (toutes les semaines).</div>"+
+      "<label style='font-weight:700;color:#b91c1c'>🗑 Effacer le planning</label>"+
+      "<div class='meta'>Supprime définitivement, sur toutes les semaines, ce qui est coché ci-dessous.</div>"+
       "<label style='display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400'>"+
-        "<input type='checkbox' id='saClearBlocks' style='width:auto'> Effacer aussi les créneaux bloqués"+
+        "<input type='checkbox' id='saClearBookings' checked style='width:auto'> Les réservations"+
+      "</label>"+
+      "<label style='display:flex;align-items:center;gap:6px;margin-top:4px;font-weight:400'>"+
+        "<input type='checkbox' id='saClearBlocks' style='width:auto'> Les créneaux bloqués"+
       "</label>"+
       "<input type='text' id='saConfirmB' placeholder='Tapez EFFACER pour confirmer' autocomplete='off' style='margin-top:6px'>"+
-      "<button class='btn' style='margin-top:8px;background:#b91c1c;color:#fff;border:none' onclick='saClearBookings()'>Effacer les réservations</button>"+
-    "</div>"+
-
-    "<div class='form-group' style='border:1px solid #fca5a5;border-radius:8px;padding:12px;margin-bottom:12px'>"+
-      "<label style='font-weight:700;color:#b91c1c'>🗑 Effacer toutes les demandes d'impression 3D</label>"+
-      "<div class='meta'>Supprime définitivement toutes les demandes (y compris archivées). Les fichiers déposés sur le Drive ne sont pas supprimés.</div>"+
-      "<input type='text' id='saConfirmD' placeholder='Tapez EFFACER pour confirmer' autocomplete='off' style='margin-top:6px'>"+
-      "<button class='btn' style='margin-top:8px;background:#b91c1c;color:#fff;border:none' onclick='saClearDemandes()'>Effacer les demandes</button>"+
+      "<button class='btn' style='margin-top:8px;background:#b91c1c;color:#fff;border:none' onclick='saClearBookings()'>Effacer</button>"+
     "</div>"+
 
     "<div class='modal-actions'>"+
-      "<button class='btn btn-close' onclick='closeModal()'>Fermer</button>"+
+      "<button class='btn btn-close' onclick='closeModal()'>↩ Fermer et se déconnecter</button>"+
     "</div>"
   );
 }
@@ -1070,22 +1067,18 @@ async function saChangeAdminPw(){
   document.getElementById('saNewPw').value=''; document.getElementById('saNewPw2').value='';
 }
 async function saClearBookings(){
-  if(document.getElementById('saConfirmB').value.trim().toUpperCase()!=='EFFACER'){ showToast("⚠️ Tapez EFFACER dans le champ pour confirmer."); return; }
+  var clearBookings=document.getElementById('saClearBookings').checked;
   var clearBlocks=document.getElementById('saClearBlocks').checked;
-  var res=await sb.functions.invoke('admin-op',{ body:{ action:'super-clearBookings', adminCode:getAdminPw(), clearBlocks:clearBlocks } });
+  if(!clearBookings && !clearBlocks){ showToast("⚠️ Cochez au moins une case."); return; }
+  if(document.getElementById('saConfirmB').value.trim().toUpperCase()!=='EFFACER'){ showToast("⚠️ Tapez EFFACER dans le champ pour confirmer."); return; }
+  var res=await sb.functions.invoke('admin-op',{ body:{ action:'super-clearBookings', adminCode:getAdminPw(), clearBookings:clearBookings, clearBlocks:clearBlocks } });
   if(res.error || !(res.data&&res.data.ok)){ showToast("❌ Échec de l'effacement."); return; }
-  var msg="✅ "+(res.data.bookings||0)+" réservation(s) effacée(s)";
-  if(clearBlocks) msg+=", "+(res.data.blocked||0)+" blocage(s) effacé(s)";
-  showToast(msg+".");
+  var parts=[];
+  if(clearBookings) parts.push((res.data.bookings||0)+" réservation(s)");
+  if(clearBlocks) parts.push((res.data.blocked||0)+" blocage(s)");
+  showToast("✅ Effacé : "+parts.join(", ")+".");
   document.getElementById('saConfirmB').value='';
   await loadAll(); render();
-}
-async function saClearDemandes(){
-  if(document.getElementById('saConfirmD').value.trim().toUpperCase()!=='EFFACER'){ showToast("⚠️ Tapez EFFACER dans le champ pour confirmer."); return; }
-  var res=await sb.functions.invoke('admin-op',{ body:{ action:'super-clearDemandes', adminCode:getAdminPw() } });
-  if(res.error || !(res.data&&res.data.ok)){ showToast("❌ Échec de l'effacement."); return; }
-  showToast("✅ "+(res.data.demandes||0)+" demande(s) d'impression effacée(s).");
-  document.getElementById('saConfirmD').value='';
 }
 
 // ─── MACHINE MANAGER avec drag & drop ────────────────────────────────────────
