@@ -53,7 +53,21 @@
   .btn-ghost{background:var(--primary-light);color:var(--primary-dark);border:1px solid var(--primary)}
   .btn-ghost:hover{background:var(--primary);color:#fff}
   .btn-admin{background:var(--admin-light);color:var(--admin-dark);border:1px solid var(--admin)}
-  .btn-admin:hover{background:var(--admin);color:#fff}
+  .btn-admin:hover,.btn-admin.active{background:var(--admin);color:#fff}
+  /* Admin banner (présentation identique à l'appli usinage) */
+  .admin-banner{display:none;flex-direction:column;gap:8px;background:var(--admin-light);border:1.5px solid var(--admin);border-radius:12px;padding:10px 16px;margin-bottom:14px;color:var(--admin-dark)}
+  .admin-banner.visible{display:flex}
+  .admin-banner-top{display:flex;align-items:center;gap:8px;font-size:.875rem;font-weight:600;flex-wrap:wrap}
+  .admin-banner-label{flex:1;font-size:.85rem}
+  .admin-banner .admin-badge{background:var(--admin);color:#fff;border-radius:5px;padding:2px 8px;font-size:.75rem;font-weight:700;letter-spacing:.05em;flex-shrink:0}
+  .admin-banner .logout-btn{background:none;border:1.5px solid var(--admin);color:var(--admin-dark);border-radius:6px;padding:4px 12px;font-size:.8rem;font-weight:600;cursor:pointer;white-space:nowrap}
+  .admin-banner .logout-btn:hover{background:var(--admin);color:#fff}
+  .admin-tools{display:flex;flex-wrap:wrap;gap:6px}
+  .btn-manage{background:var(--admin);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:.8rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+  .btn-manage:hover{background:var(--admin-dark)}
+  .btn-undo{background:#fff;color:var(--admin-dark);border:1px solid var(--admin);border-radius:6px;padding:4px 12px;font-size:.8rem;font-weight:600;cursor:pointer}
+  .btn-undo:hover:not(:disabled){background:var(--admin);color:#fff}
+  .btn-undo:disabled{opacity:.45;cursor:default}
 
   /* Cartes / sections */
   .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
@@ -280,9 +294,24 @@
       <button class="btn btn-nav" data-view="suivi" onclick="showView('suivi')">🔎 Suivi</button>
       <button class="btn btn-ghost" onclick="askEncadrant()">✔️ Encadrant</button>
       <button class="btn btn-ghost" onclick="askOperateur()">🛠️ Opérateur</button>
-      <button class="btn btn-admin" onclick="askAdmin()">⚙ Admin</button>
+      <button class="btn btn-admin" id="fabAdminBtn" onclick="askAdmin()">⚙ Admin</button>
     </nav>
   </header>
+
+  <!-- Bannière admin (présentation identique à l'appli usinage) -->
+  <div class="admin-banner" id="adminBanner">
+    <div class="admin-banner-top">
+      <span class="admin-badge">⚙ ADMIN</span>
+      <span class="admin-banner-label">Mode administrateur actif</span>
+      <button class="btn-undo" id="fabUndoBtn" onclick="undoParams()" title="Annuler le dernier enregistrement des paramètres" disabled>↶ Annuler</button>
+      <button class="btn-undo" id="fabRedoBtn" onclick="redoParams()" title="Rétablir l'enregistrement annulé" disabled>↷ Rétablir</button>
+      <button class="logout-btn" onclick="logoutFabAdmin()">↩ Déconnecter</button>
+    </div>
+    <div class="admin-tools">
+      <button class="btn-manage" onclick="openAdmin()">⚙️ Paramètres</button>
+      <button class="btn-manage" id="fabSuperBtn" style="display:none;background:#b91c1c" onclick="openFabSuper()">🛡 Super admin</button>
+    </div>
+  </div>
 
   <!-- ============ VUE ÉTUDIANT : NOUVELLE DEMANDE ============ -->
   <section id="view-nouvelle" class="view active">
@@ -485,33 +514,36 @@
     <div id="machinesEditor"></div>
     <button class="btn btn-ghost" style="width:100%;margin-top:6px" onclick="addMachineRow()">＋ Ajouter une machine</button>
     <div class="hint" style="margin-top:6px">Temps estimé ≈ volume × taux ÷ débit + temps fixe, ×1,2 par option (taraudage / insert / usinage).</div>
+    <div class="modal-actions">
+      <button class="btn btn-close" onclick="closeOverlay('ovAdmin')">Fermer</button>
+      <button class="btn btn-admin" onclick="saveAdmin()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
 
-    <!-- Section SUPER ADMIN (visible uniquement avec le mot de passe super admin) -->
-    <div id="fabSuperSection" style="display:none">
-      <div style="font-size:.8rem;font-weight:700;color:#b91c1c;margin:14px 0 4px">🛡 Super admin</div>
-      <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
-        <div style="font-size:.8rem;font-weight:700;margin-bottom:4px">🔑 Changer le mot de passe admin</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <input type="password" id="fabNewPw" placeholder="Nouveau mot de passe (4 car. min.)" autocomplete="off" style="flex:1;min-width:150px">
-          <input type="password" id="fabNewPw2" placeholder="Confirmer" autocomplete="off" style="flex:1;min-width:120px">
-          <button class="btn btn-admin" onclick="fabChangeAdminPw()">Changer</button>
-        </div>
-      </div>
-      <div style="border:1px solid #fca5a5;border-radius:8px;padding:10px">
-        <div style="font-size:.8rem;font-weight:700;color:#b91c1c;margin-bottom:4px">🗑 Effacer toutes les demandes d'impression</div>
-        <div class="hint" style="margin:0 0 6px">Supprime définitivement toutes les demandes (y compris archivées). Les fichiers déposés sur le Drive ne sont pas supprimés.</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <input type="text" id="fabConfirmD" placeholder="Tapez EFFACER pour confirmer" autocomplete="off" style="flex:1;min-width:180px">
-          <button class="btn btn-danger" onclick="fabClearDemandes()">Effacer les demandes</button>
-        </div>
+<!-- Panneau SUPER ADMIN (ouvert depuis la bannière ; fermer = déconnexion complète) -->
+<div class="overlay" id="ovSuper">
+  <div class="modal">
+    <h2>🛡 Super admin</h2>
+    <div class="meta">Actions sensibles — fermer cette fenêtre vous déconnecte.</div>
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+      <div style="font-size:.8rem;font-weight:700;margin-bottom:4px">🔑 Changer le mot de passe admin</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input type="password" id="fabNewPw" placeholder="Nouveau mot de passe (4 car. min.)" autocomplete="off" style="flex:1;min-width:150px">
+        <input type="password" id="fabNewPw2" placeholder="Confirmer" autocomplete="off" style="flex:1;min-width:120px">
+        <button class="btn btn-admin" onclick="fabChangeAdminPw()">Changer</button>
       </div>
     </div>
-
+    <div style="border:1px solid #fca5a5;border-radius:8px;padding:10px">
+      <div style="font-size:.8rem;font-weight:700;color:#b91c1c;margin-bottom:4px">🗑 Effacer toutes les demandes d'impression</div>
+      <div class="hint" style="margin:0 0 6px">Supprime définitivement toutes les demandes (y compris archivées). Les fichiers déposés sur le Drive ne sont pas supprimés.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input type="text" id="fabConfirmD" placeholder="Tapez EFFACER pour confirmer" autocomplete="off" style="flex:1;min-width:180px">
+        <button class="btn btn-danger" onclick="fabClearDemandes()">Effacer les demandes</button>
+      </div>
+    </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" id="fabUndoBtn" onclick="undoParams()" title="Annuler le dernier enregistrement des paramètres" disabled>↶ Annuler</button>
-      <button class="btn btn-ghost" id="fabRedoBtn" onclick="redoParams()" title="Rétablir l'enregistrement annulé" disabled>↷ Rétablir</button>
-      <button class="btn btn-danger" style="margin-right:auto" onclick="closeOverlay('ovAdmin')" title="Fermer et oublier le mot de passe admin">↩ Déconnecter</button>
-      <button class="btn btn-admin" onclick="saveAdmin()">💾 Enregistrer</button>
+      <button class="btn btn-close" onclick="closeOverlay('ovSuper')">↩ Fermer et se déconnecter</button>
     </div>
   </div>
 </div>
@@ -641,8 +673,9 @@ let currentEncadrantNom = '';
 let currentOperateurNom = '';
 let currentRole = null;      // 'encadrant' | 'admin'
 let _encadrantCode = '';     // code encadrant saisi (mémorisé pour les appels aux fonctions)
-let _fabAdminCode  = '';     // mot de passe admin saisi (mémorisé pour les appels aux fonctions)
-let _fabIsSuper    = false;  // vrai si le mot de passe saisi est celui du SUPER admin
+// Mode admin : mémorisé en session (comme l'appli usinage) — survit au rechargement de l'onglet.
+let _fabAdminCode  = sessionStorage.getItem('fabAdminPw')||'';   // mot de passe admin saisi
+let _fabIsSuper    = sessionStorage.getItem('fabIsSuper')==='1'; // vrai si mot de passe SUPER admin
 let _operateurCode = '';     // code opérateur saisi (mémorisé pour les appels aux fonctions)
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -654,8 +687,8 @@ function busy(on,txt){ document.getElementById('busyTxt').textContent=txt||'Trai
 function openOverlay(id){ document.getElementById(id).classList.add('open'); }
 function closeOverlay(id){
   document.getElementById(id).classList.remove('open');
-  // Fermer la fenêtre admin = déconnexion automatique (le mot de passe est oublié).
-  if(id==='ovAdmin' && _fabAdminCode){ _fabAdminCode=''; _fabIsSuper=false; showToast('↩ Admin déconnecté'); }
+  // Fermer le panneau Super admin = déconnexion complète (comme dans l'appli usinage).
+  if(id==='ovSuper' && _fabAdminCode) logoutFabAdmin();
 }
 function num(v,def){ const n=parseFloat(v); return isNaN(n)?def:n; }
 
@@ -988,7 +1021,36 @@ function closeFsViewer(){ closeOverlay('ovViewer'); if(fsViewer){ try{fsViewer.D
 //  SAISIE DE CODE (générique)
 // ─────────────────────────────────────────────────────────────────────────
 function askEncadrant(){ openCodeModal('encadrant','Espace encadrant','Code de validation à 4 chiffres.'); }
-function askAdmin(){ openCodeModal('admin','🔐 Administration','Entrez le mot de passe administrateur'); }
+// Bouton ⚙ Admin : bascule comme dans l'appli usinage (connecté → déconnexion).
+function askAdmin(){
+  if(_fabAdminCode){ logoutFabAdmin(); return; }
+  openCodeModal('admin','🔐 Administration','Entrez le mot de passe administrateur');
+}
+function logoutFabAdmin(){
+  _fabAdminCode=''; _fabIsSuper=false; _fabParamsCurrent=null;
+  sessionStorage.removeItem('fabAdminPw'); sessionStorage.removeItem('fabIsSuper');
+  // fermeture directe (sans passer par closeOverlay, pour éviter une boucle avec ovSuper)
+  document.getElementById('ovAdmin').classList.remove('open');
+  document.getElementById('ovSuper').classList.remove('open');
+  applyFabAdminUI(); showToast('↩ Admin déconnecté');
+}
+// Affiche/masque la bannière admin et le bouton Super admin selon l'état de connexion.
+function applyFabAdminUI(){
+  const on=!!_fabAdminCode;
+  document.getElementById('adminBanner').classList.toggle('visible',on);
+  document.getElementById('fabAdminBtn').classList.toggle('active',on);
+  document.getElementById('fabSuperBtn').style.display=(on&&_fabIsSuper)?'':'none';
+  updateParamsUndoUI();
+  if(on && !_fabParamsCurrent) initFabParamsCurrent();
+}
+// Instantané de l'état enregistré des paramètres (pour Annuler/Rétablir depuis la bannière).
+async function initFabParamsCurrent(){
+  let codeEnc='0000';
+  try{ const {data}=await sb.functions.invoke('admin-op',{ body:{ action:'params-list', adminCode:_fabAdminCode } }); if(data&&data.ok&&data.params) codeEnc=data.params.code_encadrant||'0000'; }catch(e){}
+  _fabParamsCurrent=currentParamsRows(codeEnc);
+  updateParamsUndoUI();
+}
+function openFabSuper(){ openOverlay('ovSuper'); }
 function askOperateur(){
   const sel=document.getElementById('opNomSelect');
   sel.innerHTML="<option value=''>— Choisir votre nom —</option>"+operateurs.map(o=>"<option value='"+esc(o.name)+"'>"+esc(o.name)+"</option>").join('');
@@ -1023,7 +1085,11 @@ async function confirmCode(){
   if(currentRole==='admin'){
     let role=null;
     try{ const res=await sb.functions.invoke('admin-op',{ body:{ action:'login', adminCode:code } }); if(!res.error && res.data && res.data.ok) role=res.data.role; }catch(e){ role=null; }
-    if(role){ _fabAdminCode=code; _fabIsSuper=(role==='super'); closeOverlay('ovCode'); openAdmin(); }
+    if(role){
+      _fabAdminCode=code; _fabIsSuper=(role==='super');
+      sessionStorage.setItem('fabAdminPw',code); sessionStorage.setItem('fabIsSuper',_fabIsSuper?'1':'0');
+      closeOverlay('ovCode'); applyFabAdminUI(); showToast('⚙ Mode administrateur actif');
+    }
     else codeError();
   } else if(currentRole==='encadrant'){
     let ok=false;
@@ -1581,7 +1647,6 @@ async function openAdmin(){
   try{ const {data}=await sb.functions.invoke('admin-op',{ body:{ action:'params-list', adminCode:_fabAdminCode } }); if(data&&data.ok&&data.params) codeEnc=data.params.code_encadrant||'0000'; }catch(e){}
   fillAdminForm(codeEnc);
   _fabParamsCurrent=currentParamsRows(codeEnc);
-  document.getElementById('fabSuperSection').style.display=_fabIsSuper?'':'none';
   updateParamsUndoUI();
   openOverlay('ovAdmin');
 }
@@ -1712,7 +1777,7 @@ async function saveAdmin(){
   // Historique : l'état précédent devient annulable, le rétablissement repart de zéro.
   if(_fabParamsCurrent){ _fabParamsHist.undo.push(_fabParamsCurrent); _fabParamsHist.redo=[]; _fabParamsCurrent=rows; saveParamsHist(); }
   await loadParams(); buildMachines(); onMachineChange(); updateProjetProgress();
-  closeOverlay('ovAdmin'); showToast('💾 Paramètres enregistrés — admin déconnecté');
+  closeOverlay('ovAdmin'); showToast('💾 Paramètres enregistrés');
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1778,6 +1843,8 @@ setInterval(()=>{ if(document.visibilityState==='visible') refreshActiveView(); 
 window.addEventListener('pageshow', function(e){
   if(!e.persisted) return;
   currentEncadrantNom=''; currentOperateurNom=''; currentRole=null;
+  // ovSuper fermé directement (sans closeOverlay) pour ne pas déconnecter l'admin au retour arrière.
+  document.getElementById('ovSuper').classList.remove('open');
   ['ovCode','ovEncNom','ovOperateur','ovAdmin','ovRenameProj','ovLimites','ovExport','ovStats','ovArchives','ovViewer'].forEach(closeOverlay);
   showView('nouvelle');
 });
@@ -1786,6 +1853,7 @@ window.addEventListener('pageshow', function(e){
 //  INITIALISATION
 // ─────────────────────────────────────────────────────────────────────────
 (async function init(){
+  applyFabAdminUI(); // restaure la bannière admin si la session est encore active
   await Promise.all([loadParams(), loadEtudiants(), loadOperateurs()]);
   buildMachines();
   buildSuiviLists();
