@@ -156,6 +156,7 @@
   td{padding:9px 10px;font-size:.85rem;border-bottom:1px solid var(--border);vertical-align:middle}
   tr:hover td{background:#f7fbfd}
   .cell-actions{display:flex;gap:5px;flex-wrap:wrap}
+  .op-counter{display:none} /* visible uniquement en mobile (carrousel) */
 
   /* Badges de statut */
   .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.74rem;font-weight:700;white-space:nowrap}
@@ -262,6 +263,18 @@
     .op-table .cell-comment,.op-table .param-badges{max-width:none;justify-content:flex-end;text-align:right}
     .op-table .param-badges{display:flex}
     .op-table td > div:not(.cell-actions):not(.param-badges){text-align:right}
+    /* Tableau OPÉRATEUR → carrousel horizontal : une demande par carte, aimantation native
+       (scroll-snap), bords des cartes voisines visibles pour inviter au glissement. */
+    #operateurResults .op-table tbody{display:flex;flex-direction:row;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 2px 12px;-webkit-overflow-scrolling:touch}
+    #operateurResults .op-table tr{flex:0 0 88%;width:auto;scroll-snap-align:center;margin-bottom:0}
+    /* Compteur « Demande X / N » (mis à jour au glissement et en temps réel) */
+    .op-counter{display:block;text-align:center;font-weight:700;font-size:.9rem;color:var(--primary-dark);background:var(--primary-light);border:1px solid var(--primary);border-radius:8px;padding:6px;margin-bottom:8px}
+    /* Boutons d'action : grille 2 colonnes, tous de taille identique (confort tactile) */
+    #operateurResults .cell-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    #operateurResults .cell-actions .btn{height:46px;justify-content:center;font-size:.85rem;margin:0;width:100%}
+    #operateurResults .cell-actions .duree-wrap{grid-column:1/-1;justify-content:center;font-size:.8rem}
+    #operateurResults .op-duree{width:64px;height:42px;font-size:1rem;text-align:center}
+    #operateurResults .cell-comment .btn{width:100%;height:42px;justify-content:center;margin-top:6px}
     /* Cartes encadrant */
     .demande-card .dc-actions .btn{flex:1;justify-content:center}
     .table-wrap{border:none}
@@ -439,6 +452,7 @@
           <button class="btn btn-ghost" onclick="openLimites()">📊 Limites par projet</button>
         </div>
       </div>
+      <div id="opCounter" class="op-counter"></div>
       <div id="operateurResults"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
     </div>
   </section>
@@ -1341,7 +1355,7 @@ async function loadOperateur(){
   const res=await sb.from('demandes').select('*').in('statut',['validee','en_cours','imprimee','attente_info']);
   if(res.error){ box.innerHTML="<div class='empty'>Erreur : "+esc(res.error.message)+"</div>"; return; }
   const data=(res.data||[]).filter(d=>!d.archive); // filtrage archive côté client (résilient si la colonne n'existe pas encore)
-  if(!data.length){ lastSigOperateur=null; box.innerHTML="<div class='empty'>Aucune impression à traiter pour le moment.</div>"; return; }
+  if(!data.length){ lastSigOperateur=null; box.innerHTML="<div class='empty'>Aucune impression à traiter pour le moment.</div>"; updateOpCounter(); return; }
   data.sort(ordreFile);
   data.forEach(d=>demandesById[d.id]=d);
   // Positions dans la file (parmi les demandes validées, dans l'ordre)
@@ -1397,12 +1411,36 @@ async function loadOperateur(){
       "</tr>";
   }).join('');
   const wrap=box.querySelector('.table-wrap');
+  // Mobile : conserver la carte affichée du carrousel lors des rafraîchissements temps réel.
+  const oldTbody=box.querySelector('.op-table tbody');
+  const savedCarousel=oldTbody?oldTbody.scrollLeft:0;
   preserveScroll(wrap, ()=>{
     box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrant</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Comm. opérateur</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
   });
+  const newTbody=box.querySelector('.op-table tbody');
+  if(newTbody && savedCarousel) newTbody.scrollLeft=savedCarousel;
+  updateOpCounter();
   restoreDureeInputs(savedDuree);
   tickCountdowns();
 }
+// Compteur « Demande X / N » du carrousel mobile : suit le glissement (aimantation) et se
+// recalcule à chaque rafraîchissement de la liste (le total N s'ajuste donc automatiquement).
+function updateOpCounter(){
+  const el=document.getElementById('opCounter'); if(!el) return;
+  const tb=document.querySelector('#operateurResults .op-table tbody');
+  const mobile=window.matchMedia('(max-width:640px)').matches;
+  if(!tb || !tb.children.length || !mobile){ el.style.display='none'; return; }
+  const n=tb.children.length;
+  const w=tb.children[0].offsetWidth+10; // largeur d'une carte + espacement
+  const i=Math.min(n-1, Math.max(0, Math.round(tb.scrollLeft/Math.max(1,w))));
+  el.style.display='';
+  el.textContent='Demande '+(i+1)+' / '+n;
+  if(!tb._counterBound){
+    tb._counterBound=true;
+    tb.addEventListener('scroll', ()=>{ clearTimeout(tb._ct); tb._ct=setTimeout(updateOpCounter,80); }, {passive:true});
+  }
+}
+window.addEventListener('resize', ()=>{ clearTimeout(window._opcRt); window._opcRt=setTimeout(updateOpCounter,150); });
 // Commentaire de l'opérateur sur une demande (visible dans le suivi étudiant).
 async function editOpComment(id){
   const cur=(demandesById[id]&&demandesById[id].operateur_commentaire)||'';
