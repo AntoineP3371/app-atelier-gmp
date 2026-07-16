@@ -207,6 +207,7 @@
   .modal{background:var(--surface);border-radius:14px;padding:24px;width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.18);animation:pop .18s ease;max-height:92vh;overflow-y:auto}
   .modal.big{max-width:900px}
   .modal.wide{max-width:680px}
+  .modal.xwide{max-width:min(1500px,96vw)}
   @keyframes pop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
   .modal h2{font-size:1.1rem;font-weight:700;margin-bottom:4px}
   .modal .meta{font-size:.82rem;color:var(--muted);margin-bottom:16px}
@@ -557,7 +558,7 @@
 
 <!-- ============ MODALE : liste totale des demandes (admin) ============ -->
 <div class="overlay" id="ovToutes">
-  <div class="modal wide">
+  <div class="modal xwide">
     <h2>📋 Toutes les demandes d'impression</h2>
     <div class="meta">Liste complète, y compris archivées, dans l'ordre chronologique.</div>
     <div id="toutesBody"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
@@ -610,7 +611,7 @@
 
 <!-- ============ MODALE : statistiques (opérateur) ============ -->
 <div class="overlay" id="ovStats">
-  <div class="modal wide">
+  <div class="modal xwide">
     <h2>📈 Statistiques des impressions</h2>
     <div class="form-row">
       <div class="form-group"><label>Du</label><input type="date" id="stDu"></div>
@@ -1213,20 +1214,23 @@ function demandeCardEncadrant(d){
     if(d.statut==='validee') btns+="<button class='btn btn-danger' onclick='validerDemande("+d.id+",false)' title='Annule la validation : la demande repasse en refusée'>✖️ Refuser a posteriori</button>";
     if(d.statut==='refusee') btns+="<button class='btn btn-green' onclick='validerDemande("+d.id+",true)'>✔️ Valider finalement</button>";
   }
-  const infos=(d.encadrant_nom?"<br>✔️ Traité par "+esc(d.encadrant_nom):"")+(d.operateur_nom?"<br>🛠️ "+esc(d.operateur_nom):"");
   return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
-    "<div><div class='dc-title'>📄 "+esc(d.fichier_nom)+"</div>"+
-    "<div class='dc-meta'>👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · <b>"+esc(d.projet)+"</b> · n°"+(d.numero||'?')+" · "+dateLabel(d.created_at)+"<br>"+
-    params+(d.bbox?" · 📐 "+esc(d.bbox):"")+
+    "<div><div class='dc-title'>"+titreDemande(d)+"</div>"+
+    "<div class='dc-meta'>"+params+(d.bbox?" · 📐 "+esc(d.bbox):"")+" · 📄 "+esc(d.fichier_nom)+
     comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
     comLine('🗨️','opérateur', d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at, d.operateur_commentaire)+
-    infos+"</div></div>"+
+    ligneTraitee(d)+
+    ligneOperee(d)+"</div></div>"+
     "<div>"+badge(d.statut)+"</div></div>"+
     "<textarea id='enccom-"+d.id+"' class='enc-comment' rows='2' placeholder='Commentaire encadrant (optionnel)…'>"+esc(d.encadrant_commentaire||'')+"</textarea>"+
     "<div class='dc-actions'>"+btns+"</div></div>";
 }
 function dateLabel(iso){ if(!iso) return ''; const dt=new Date(iso); return dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
 function dateHeureLabel(iso){ if(!iso) return ''; const dt=new Date(iso); return dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'})+' à '+dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }
+// En-tête et lignes de traitement communes aux cartes (suivi étudiant, vue encadrant).
+function titreDemande(d){ return "Demande n°"+(d.numero||'?')+" faite par "+esc((d.etudiant_prenom||'')+' '+(d.etudiant_nom||''))+" pour le projet "+esc(d.projet||'—')+" le "+dateHeureLabel(d.created_at); }
+function ligneTraitee(d){ return d.encadrant_nom ? "<br>✔️ Traité par "+esc(d.encadrant_nom)+(d.encadrant_valide_at?" le "+dateHeureLabel(d.encadrant_valide_at):"") : ""; }
+function ligneOperee(d){ if(!d.operateur_nom) return ""; const at=d.imprime_at||d.en_cours_at; return "<br>🛠️ Opérée par "+esc(d.operateur_nom)+(at?" le "+dateHeureLabel(at):""); }
 // Ligne de commentaire avec auteur identifié et horodatage.
 function comLine(emoji, role, nom, at, txt){
   if(!txt) return '';
@@ -1379,7 +1383,7 @@ async function loadOperateur(){
       (d.statut==='imprimee'?"<button class='btn btn-ghost' onclick='archiver("+d.id+")' title='Archiver'>🗄️</button>":"")+
       "</div>";
     return "<tr class='st-"+d.statut+"'>"+
-      "<td data-label='Projet'><b>"+esc(d.projet)+"</b><br><span style='color:var(--muted);font-size:.78rem'>"+esc(d.fichier_nom)+"</span></td>"+
+      "<td data-label='Projet'><b>"+esc(d.projet)+"</b><br><span style='color:var(--muted);font-size:.78rem'>"+esc(d.fichier_nom)+"</span><br><span class='com-meta'>📅 "+dateHeureLabel(d.created_at)+"</span></td>"+
       "<td data-label='N°'>"+(d.numero||'?')+"</td>"+
       "<td data-label='Étudiant'>"+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</td>"+
       "<td data-label='Encadrant'>"+esc(d.encadrant_nom||'—')+"</td>"+
@@ -1444,7 +1448,7 @@ async function openArchives(){
   data.forEach(d=>demandesById[d.id]=d);
   box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Machine</th><th>Temps</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+
     data.map(d=>"<tr class='st-"+d.statut+"'>"+
-      "<td data-label='Projet'><b>"+esc(d.projet)+"</b><br><span style='color:var(--muted);font-size:.78rem'>"+esc(d.fichier_nom)+"</span></td>"+
+      "<td data-label='Projet'><b>"+esc(d.projet)+"</b><br><span style='color:var(--muted);font-size:.78rem'>"+esc(d.fichier_nom)+"</span><br><span class='com-meta'>📅 "+dateHeureLabel(d.created_at)+"</span></td>"+
       "<td data-label='N°'>"+(d.numero||'?')+"</td>"+
       "<td data-label='Étudiant'>"+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</td>"+
       "<td data-label='Machine'>"+machineLabel(d.machine)+"</td>"+
@@ -1668,10 +1672,8 @@ async function openToutes(){
   const rows=_toutesData.map(d=>{
     const dt=d.created_at?new Date(d.created_at):null;
     return "<tr"+(d.archive?" style='opacity:.55'":"")+">"+
-      "<td>"+(dt?dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—')+"</td>"+
-      "<td><b>"+esc(d.projet||'—')+"</b></td>"+
+      "<td><b>"+esc(d.projet||'—')+"</b><br><span style='color:var(--muted);font-size:.78rem'>"+esc(d.fichier_nom||'—')+"</span><br><span class='com-meta'>📅 "+(dt?dateHeureLabel(d.created_at):'—')+"</span></td>"+
       "<td>"+(d.numero||'?')+"</td>"+
-      "<td>"+esc(d.fichier_nom||'—')+"</td>"+
       "<td>"+esc((d.etudiant_prenom||'')+' '+(d.etudiant_nom||''))+"</td>"+
       "<td>"+esc(machineLabel(d.machine))+"</td>"+
       "<td>"+(d.finition==='finition'?'Finition':'Brouillon')+"</td>"+
@@ -1680,7 +1682,7 @@ async function openToutes(){
       "</tr>";
   }).join('');
   box.innerHTML="<div style='font-size:.8rem;color:var(--muted);margin-bottom:6px'>"+_toutesData.length+" demande(s) au total — 🗄️ = archivée</div>"+
-    "<div class='table-wrap' style='max-height:55vh;overflow:auto'><table class='op-table'><thead><tr><th>Date</th><th>Projet</th><th>N°</th><th>Fichier</th><th>Étudiant</th><th>Machine</th><th>Type</th><th>Usinage</th><th>Statut</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+    "<div class='table-wrap' style='max-height:55vh;overflow:auto'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Machine</th><th>Type</th><th>Usinage</th><th>Statut</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
 }
 function exportToutesCSV(){
   if(!_toutesData.length){ showToast('Aucune demande à exporter'); return; }
@@ -1758,15 +1760,15 @@ async function rechercherSuivi(silent){
     const pos=posMap[d.id];
     const fileLine = (d.statut==='validee' && pos) ? "<br>🕒 File d'attente : "+pos+"ᵉ sur "+fileLen : "";
     return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
-    "<div><div class='dc-title'>"+esc(d.projet)+" — "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</div>"+
-    "<div class='dc-meta'>n°"+(d.numero||'?')+" · "+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+" · 📄 "+esc(d.fichier_nom)+
-    (d.encadrant_nom?"<br>✔️ Validé par "+esc(d.encadrant_nom):"")+
+    "<div><div class='dc-title'>"+titreDemande(d)+"</div>"+
+    "<div class='dc-meta'>"+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+" · 📄 "+esc(d.fichier_nom)+
     fileLine+
-    (d.operateur_nom?"<br>🛠️ Traité par "+esc(d.operateur_nom):"")+
     (d.statut==='attente_info'?"<br><b style='color:#c2410c'>🙋 L'opérateur a besoin de précisions : venez le voir à l'atelier pour confirmer des éléments de votre demande.</b>":"")+
     comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
     comLine('💬','encadrant', d.encadrant_commentaire_par||d.encadrant_nom, d.encadrant_commentaire_at||d.encadrant_valide_at, d.encadrant_commentaire)+
-    comLine('🗨️','opérateur', d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at, d.operateur_commentaire)+"</div></div>"+
+    comLine('🗨️','opérateur', d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at, d.operateur_commentaire)+
+    ligneTraitee(d)+
+    ligneOperee(d)+"</div></div>"+
     "<div style='text-align:right'>"+badge(d.statut)+(end?"<div class='countdown' data-end='"+end+"'></div>":"")+"</div>"+
     "</div></div>";
   }).join('');
