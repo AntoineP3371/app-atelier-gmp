@@ -702,10 +702,28 @@
     <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px">
       <button class="btn btn-ghost" onclick="telechargerStep(_lancerId)">⬇ Télécharger le STEP</button>
       <span class="duree-wrap" style="font-size:.9rem">Durée réelle : <input type="number" id="lancerH" min="0" style="width:64px" placeholder="h"> h <input type="number" id="lancerM" min="0" max="59" style="width:64px" placeholder="min"> min</span>
+      <span class="duree-wrap" style="font-size:.9rem">Poids matière : <input type="number" id="lancerPoids" min="0" step="0.1" style="width:76px" placeholder="g"> g</span>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:12px">
+      <button class="btn btn-amber" id="lancerAttInfo" onclick="modalStatut('attente_info')" title="Signaler que le demandeur doit venir vous voir pour confirmer des éléments">🙋 Att. info</button>
+      <button class="btn btn-green" onclick="modalStatut('imprimee')">✅ Terminée</button>
+      <button class="btn btn-ghost" onclick="modalStatut('validee')" title="Remettre en attente">↩︎ Remettre en attente</button>
     </div>
     <div class="modal-actions">
       <button class="btn btn-close" onclick="closeLancerModal()">Annuler</button>
       <button class="btn btn-amber" onclick="validerLancer()">▶️ Valider et lancer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODALE : confirmation générique (Oui / Non) ============ -->
+<div class="overlay" id="ovConfirm">
+  <div class="modal">
+    <h2 id="confirmTitle">Confirmation</h2>
+    <div class="meta" id="confirmMsg"></div>
+    <div class="modal-actions">
+      <button class="btn btn-close" onclick="_confirmResolve(false)">Non</button>
+      <button class="btn btn-amber" onclick="_confirmResolve(true)">Oui</button>
     </div>
   </div>
 </div>
@@ -802,6 +820,7 @@ function slugProjet(p){ return (p||'projet').normalize('NFD').replace(/[̀-ͯ]/g
 function paramTags(d){ const opts=[]; if(d.taraudage)opts.push('Taraudage'); if(d.insert_filete)opts.push('Insert'); if(d.usinage)opts.push('Usinage'); return opts; }
 function fmtRestant(ms){ if(ms<=0) return 'terminé'; const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60; return (h>0?h+'h':'')+(m<10&&h>0?'0':'')+m+'m'+(sec<10?'0':'')+sec+'s'; }
 function fmtDuree(min){ min=Math.round(min||0); const h=Math.floor(min/60), m=min%60; return h>0 ? (h+'h'+(m<10?'0':'')+m) : (m+' min'); }
+function fmtPoids(g){ g=Number(g)||0; return g>=1000 ? (g/1000).toFixed(g%1000?1:0)+' kg' : (Math.round(g*10)/10)+' g'; }
 function countdownEnd(d){ if(d.statut!=='en_cours' || !d.en_cours_at || !d.duree_reelle_min) return null; return new Date(d.en_cours_at).getTime() + d.duree_reelle_min*60000; }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1128,33 +1147,90 @@ async function loadStepInto(cont, driveId, fichierNom){
 }
 
 // ── Fenêtre de lancement d'une impression : visu 3D + téléchargement + durée + validation ──
-let lancerViewer=null, _lancerId=null;
+// Verrou de concurrence : tant qu'un opérateur a cette fenêtre ouverte, un autre ne peut pas
+// lancer la même demande. Le verrou est rafraîchi périodiquement et libéré à la fermeture.
+let lancerViewer=null, _lancerId=null, _lancerHeartbeat=null;
 async function openLancerModal(id){
   const d=demandesById[id]; if(!d) return;
+  // Tenter d'acquérir le verrou avant d'ouvrir la fenêtre. On ne BLOQUE que si un autre
+  // opérateur le détient ('locked'). Toute autre réponse (fonction pas encore redéployée,
+  // réseau…) laisse ouvrir normalement — dégradation propre vers l'ancien comportement.
+  const lock=await sb.functions.invoke('demande-op',{ body:{ action:'lancer-lock', id:id, operateur:currentOperateurNom, opCode:_operateurCode } });
+  if(!lock.error && lock.data && lock.data.error==='locked'){
+    showToast('🔒 '+((lock.data.by||'Un autre opérateur'))+' est en train de lancer cette demande.');
+    return;
+  }
   _lancerId=id;
-  document.getElementById('lancerTitle').textContent="▶️ Lancer — "+(d.fichier_nom||'');
+  document.getElementById('lancerTitle').textContent="🖐️ Je m'en occupe — "+(d.fichier_nom||'');
   document.getElementById('lancerMeta').textContent="n°"+numeroLabel(d)+" · "+(d.etudiant_prenom+' '+d.etudiant_nom)+" — "+d.projet;
+  document.getElementById('lancerAttInfo').style.display = (d.statut==='attente_info')?'none':'';
   const dv=d.duree_reelle_min||0;
   document.getElementById('lancerH').value = dv>0?Math.floor(dv/60):'';
   document.getElementById('lancerM').value = dv>0?dv%60:'';
+  document.getElementById('lancerPoids').value = (d.poids_matiere!=null && d.poids_matiere!=='')?d.poids_matiere:'';
   openOverlay('ovLancer');
+  startLancerHeartbeat();
   const cont=document.getElementById('lancerViewer');
   if(lancerViewer){ try{lancerViewer.Destroy();}catch(e){} lancerViewer=null; }
   lancerViewer=await loadStepInto(cont, d.drive_file_id, d.fichier_nom);
 }
-function closeLancerModal(){ closeOverlay('ovLancer'); if(lancerViewer){ try{lancerViewer.Destroy();}catch(e){} lancerViewer=null; } _lancerId=null; }
+// Rafraîchit le verrou tant que la fenêtre reste ouverte (expiration serveur : 3 min).
+function startLancerHeartbeat(){
+  clearInterval(_lancerHeartbeat);
+  _lancerHeartbeat=setInterval(()=>{
+    if(!_lancerId){ clearInterval(_lancerHeartbeat); return; }
+    sb.functions.invoke('demande-op',{ body:{ action:'lancer-lock', id:_lancerId, operateur:currentOperateurNom, opCode:_operateurCode } });
+  }, 60000);
+}
+function closeLancerModal(){
+  clearInterval(_lancerHeartbeat); _lancerHeartbeat=null;
+  const id=_lancerId; _lancerId=null;
+  closeOverlay('ovLancer'); if(lancerViewer){ try{lancerViewer.Destroy();}catch(e){} lancerViewer=null; }
+  // Libérer le verrou pour cet opérateur.
+  if(id) sb.functions.invoke('demande-op',{ body:{ action:'lancer-unlock', id:id, operateur:currentOperateurNom, opCode:_operateurCode } });
+}
+// Confirmation générique Oui/Non (renvoie une promesse booléenne).
+let _confirmCb=null;
+function askConfirm(msg,title){
+  document.getElementById('confirmMsg').textContent=msg;
+  document.getElementById('confirmTitle').textContent=title||'Confirmation';
+  openOverlay('ovConfirm');
+  return new Promise(res=>{ _confirmCb=res; });
+}
+function _confirmResolve(v){ closeOverlay('ovConfirm'); const cb=_confirmCb; _confirmCb=null; if(cb) cb(v); }
+
+// Boutons de statut déplacés dans la fenêtre « Je m'en occupe » : applique le statut puis ferme
+// la fenêtre (ce qui libère le verrou).
+async function modalStatut(statut){
+  const id=_lancerId; if(!id) return;
+  await majStatut(id, statut);
+  closeLancerModal();
+}
 async function validerLancer(){
   const id=_lancerId; if(!id) return;
   const hh=Math.max(0, Math.round(num(document.getElementById('lancerH').value,0)));
   const mm=Math.max(0, Math.round(num(document.getElementById('lancerM').value,0)));
   const duree=hh*60+mm;
   if(!duree){ showToast('⚠️ Indiquez la durée réelle (heures / minutes) avant de lancer'); return; }
+  // Impression déjà lancée (minuteur déjà démarré) → demander confirmation avant de relancer.
+  const d=demandesById[id];
+  if(d && d.en_cours_at){
+    const ok=await askConfirm('Cette impression est déjà lancée. Le minuteur repartira à zéro avec la nouvelle durée saisie.','Êtes-vous certain de vouloir relancer cette impression ?');
+    if(!ok) return;
+  }
+  const poids=Math.max(0, num(document.getElementById('lancerPoids').value, 0));
   busy(true,'Démarrage…');
-  const res=await sb.functions.invoke('demande-op',{ body:{ action:'lancer', id:id, duree:duree, operateur:currentOperateurNom, opCode:_operateurCode } });
+  const res=await sb.functions.invoke('demande-op',{ body:{ action:'lancer', id:id, duree:duree, poids:poids, operateur:currentOperateurNom, opCode:_operateurCode } });
   busy(false);
-  if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error==='auth')?'Accès refusé':'Erreur')); return; }
+  if(res.error || !res.data || !res.data.ok){
+    if(res.data && res.data.error==='locked'){ showToast('🔒 '+((res.data.by||'Un autre opérateur'))+' est en train de lancer cette demande.'); }
+    else { showToast('❌ '+((res.data&&res.data.error==='auth')?'Accès refusé':'Erreur')); }
+    return;
+  }
   showToast('▶️ Impression lancée — minuteur démarré ('+duree+' min)');
-  closeLancerModal(); loadOperateur();
+  clearInterval(_lancerHeartbeat); _lancerHeartbeat=null; _lancerId=null; // verrou déjà libéré par le serveur
+  closeOverlay('ovLancer'); if(lancerViewer){ try{lancerViewer.Destroy();}catch(e){} lancerViewer=null; }
+  loadOperateur();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1465,10 +1541,7 @@ async function loadOperateur(){
     let act="<div class='cell-actions'>"+
       "<button class='btn btn-ghost' onclick='voir3D("+d.id+")'>👁️ 3D</button>"+
       queueBtns+
-      (d.statut!=='attente_info'?"<button class='btn btn-amber' onclick='majStatut("+d.id+",\"attente_info\")' title='Signaler que le demandeur doit venir vous voir pour confirmer des éléments'>🙋 Att. info</button>":"")+
-      "<button class='btn btn-amber' onclick='openLancerModal("+d.id+")'>▶️ Lancer</button>"+
-      "<button class='btn btn-green' onclick='majStatut("+d.id+",\"imprimee\")'>✅ Terminée</button>"+
-      "<button class='btn btn-ghost' onclick='majStatut("+d.id+",\"validee\")' title='Remettre en attente'>↩︎ Remettre en attente</button>"+
+      "<button class='btn btn-amber' onclick='openLancerModal("+d.id+")'>🖐️ Je m'en occupe</button>"+
       (d.statut==='imprimee'?"<button class='btn btn-ghost' onclick='archiver("+d.id+")' title='Archiver'>🗄️ Archiver</button>":"")+
       "</div>";
     return "<tr class='st-"+d.statut+"'>"+
@@ -1576,7 +1649,7 @@ async function majStatut(id, statut){
   const res=await sb.functions.invoke('demande-op',{ body:{ action:'statut', id:id, statut:statut, operateur:currentOperateurNom, opCode:_operateurCode } });
   busy(false);
   if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error==='auth')?'Accès refusé':'Erreur')); return; }
-  showToast(statut==='imprimee'?'✅ Marquée terminée':(statut==='validee'?'↩︎ Remise en attente':'Mise à jour'));
+  showToast(statut==='imprimee'?'✅ Marquée terminée':(statut==='validee'?'↩︎ Remise en attente':(statut==='attente_info'?'🙋 En attente d\'information':'Mise à jour')));
   loadOperateur();
 }
 async function lancerImpression(id){
@@ -1680,12 +1753,14 @@ async function loadStats(){
   const d=data||[];
   const byStatut={en_attente:0,validee:0,en_cours:0,imprimee:0,refusee:0,attente_info:0};
   const byMachine={}, byFormation={}, byProjet={};
-  let tempsTotal=0;
+  let tempsTotal=0, poidsTotal=0;
   d.forEach(x=>{
     byStatut[x.statut]=(byStatut[x.statut]||0)+1;
     const t = (x.duree_reelle_min||0);
+    const w = Number(x.poids_matiere)||0;
     if(x.statut==='imprimee'||x.statut==='en_cours') tempsTotal+=t;
-    const m=machineLabel(x.machine); byMachine[m]=byMachine[m]||{count:0,temps:0}; byMachine[m].count++; byMachine[m].temps+=t;
+    poidsTotal+=w;
+    const m=machineLabel(x.machine); byMachine[m]=byMachine[m]||{count:0,temps:0,poids:0}; byMachine[m].count++; byMachine[m].temps+=t; byMachine[m].poids+=w;
     const f=formationDe(x); byFormation[f]=(byFormation[f]||0)+1;
     const p=x.projet||'—'; byProjet[p]=byProjet[p]||{count:0,temps:0}; byProjet[p].count++; byProjet[p].temps+=t;
   });
@@ -1702,28 +1777,30 @@ async function loadStats(){
     card('Terminées', byStatut.imprimee||0,'ok')+
     card('Refusées', byStatut.refusee||0,'ko')+
     card("Temps d'impression", fmtDuree(tempsTotal))+
+    card("Matière", fmtPoids(poidsTotal))+
     "</div>";
   // Tableau croisé : par machine × brouillon/finition × avec/sans usinage
   const cross={};
   d.forEach(x=>{
     const m=machineLabel(x.machine);
-    cross[m]=cross[m]||{total:0,brouillon:0,finition:0,usinage:0,sansUsinage:0};
+    cross[m]=cross[m]||{total:0,brouillon:0,finition:0,usinage:0,sansUsinage:0,poids:0};
     cross[m].total++;
     if(x.finition==='finition') cross[m].finition++; else cross[m].brouillon++;
     if(x.usinage) cross[m].usinage++; else cross[m].sansUsinage++;
+    cross[m].poids+=Number(x.poids_matiere)||0;
   });
   let crossHtml="";
   const crossKeys=Object.keys(cross).sort((a,b)=>cross[b].total-cross[a].total);
   if(crossKeys.length){
-    const tot={total:0,brouillon:0,finition:0,usinage:0,sansUsinage:0};
+    const tot={total:0,brouillon:0,finition:0,usinage:0,sansUsinage:0,poids:0};
     crossHtml="<div class='stat-block'><div class='stat-title'>Détail par machine</div>"+
-      "<div class='table-wrap'><table class='op-table'><thead><tr><th>Machine</th><th>Total</th><th>Brouillon</th><th>Finition</th><th>Avec usinage</th><th>Sans usinage</th></tr></thead><tbody>";
+      "<div class='table-wrap'><table class='op-table'><thead><tr><th>Machine</th><th>Total</th><th>Brouillon</th><th>Finition</th><th>Avec usinage</th><th>Sans usinage</th><th>Matière</th></tr></thead><tbody>";
     crossKeys.forEach(m=>{
       const c=cross[m];
-      ['total','brouillon','finition','usinage','sansUsinage'].forEach(k=>tot[k]+=c[k]);
-      crossHtml+="<tr><td><b>"+esc(m)+"</b></td><td>"+c.total+"</td><td>"+c.brouillon+"</td><td>"+c.finition+"</td><td>"+c.usinage+"</td><td>"+c.sansUsinage+"</td></tr>";
+      ['total','brouillon','finition','usinage','sansUsinage','poids'].forEach(k=>tot[k]+=c[k]);
+      crossHtml+="<tr><td><b>"+esc(m)+"</b></td><td>"+c.total+"</td><td>"+c.brouillon+"</td><td>"+c.finition+"</td><td>"+c.usinage+"</td><td>"+c.sansUsinage+"</td><td>"+fmtPoids(c.poids)+"</td></tr>";
     });
-    crossHtml+="<tr style='font-weight:700;border-top:2px solid var(--border)'><td>Total</td><td>"+tot.total+"</td><td>"+tot.brouillon+"</td><td>"+tot.finition+"</td><td>"+tot.usinage+"</td><td>"+tot.sansUsinage+"</td></tr>";
+    crossHtml+="<tr style='font-weight:700;border-top:2px solid var(--border)'><td>Total</td><td>"+tot.total+"</td><td>"+tot.brouillon+"</td><td>"+tot.finition+"</td><td>"+tot.usinage+"</td><td>"+tot.sansUsinage+"</td><td>"+fmtPoids(tot.poids)+"</td></tr>";
     crossHtml+="</tbody></table></div></div>";
   }
   html+=crossHtml;
@@ -1878,6 +1955,7 @@ async function rechercherSuivi(silent){
     "<div class='dc-meta'>"+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+" · 📄 "+esc(d.fichier_nom)+
     fileLine+
     (d.statut==='attente_info'?"<br><b style='color:#c2410c'>🙋 L'opérateur a besoin de précisions : venez le voir à l'atelier pour confirmer des éléments de votre demande.</b>":"")+
+    (d.statut==='imprimee'?"<br><b style='color:#166534'>✅ Impression terminée, votre pièce est disponible auprès de l'opérateur "+esc(d.operateur_nom||'—')+".</b>":"")+
     comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
     comLine('💬','encadrant', d.encadrant_commentaire_par||d.encadrant_nom, d.encadrant_commentaire_at||d.encadrant_valide_at, d.encadrant_commentaire)+
     comLine('🗨️','opérateur', d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at, d.operateur_commentaire)+
@@ -2052,7 +2130,7 @@ window.addEventListener('pageshow', function(e){
   currentEncadrantNom=''; currentOperateurNom=''; currentRole=null;
   // ovSuper fermé directement (sans closeOverlay) pour ne pas déconnecter l'admin au retour arrière.
   document.getElementById('ovSuper').classList.remove('open');
-  ['ovCode','ovEncNom','ovOperateur','ovCodeEnc','ovLimiteDef','ovNotifs','ovMachinesAdmin','ovToutes','ovRenameProj','ovLimites','ovExport','ovStats','ovArchives','ovViewer','ovLancer'].forEach(closeOverlay);
+  ['ovCode','ovEncNom','ovOperateur','ovCodeEnc','ovLimiteDef','ovNotifs','ovMachinesAdmin','ovToutes','ovRenameProj','ovLimites','ovExport','ovStats','ovArchives','ovViewer','ovLancer','ovConfirm'].forEach(closeOverlay);
   showView('nouvelle');
 });
 

@@ -3,7 +3,7 @@
 // Auth par action :
 //   create  : public (mais la LIMITE par projet est vérifiée côté serveur)
 //   valider / enc-commentaire : code encadrant
-//   lancer / statut / archive / reorder / op-commentaire : code opérateur (nom + code)
+//   lancer / lancer-lock / lancer-unlock / statut / archive / reorder / op-commentaire : code opérateur (nom + code)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const cors = {
@@ -85,12 +85,59 @@ Deno.serve(async (req) => {
       return json({ ok: true })
     }
 
+    // ── Verrou « fenêtre Lancer ouverte » (empêche 2 opérateurs de lancer la même demande) ──
+    // Le verrou expire après LOCK_TTL_MS (rafraîchi tant que la fenêtre reste ouverte).
+    const LOCK_TTL_MS = 180000 // 3 minutes
+
+    if (action === 'lancer-lock') {
+      if (!(await opOk(b.operateur, b.opCode))) return json({ ok: false, error: 'auth' }, 401)
+      const name = (b.operateur ?? '').toString()
+      const nowIso = new Date().toISOString()
+      const cutoff = new Date(Date.now() - LOCK_TTL_MS).toISOString()
+      // 1) Prise atomique du verrou s'il est libre ou expiré (WHERE ... AND status filter).
+      const grab = await sb.from('demandes')
+        .update({ lancer_lock_by: name, lancer_lock_at: nowIso })
+        .eq('id', b.id)
+        .or(`lancer_lock_by.is.null,lancer_lock_at.lt.${cutoff}`)
+        .select('id')
+      if (grab.error) throw grab.error
+      if (grab.data && grab.data.length) return json({ ok: true })
+      // 2) Sinon : est-ce déjà moi qui le détiens ? (rafraîchir) ; sinon quelqu'un d'autre.
+      const cur = await sb.from('demandes').select('lancer_lock_by').eq('id', b.id).maybeSingle()
+      const by = (cur.data?.lancer_lock_by ?? '').toString()
+      if (by === name) {
+        await sb.from('demandes').update({ lancer_lock_at: nowIso }).eq('id', b.id)
+        return json({ ok: true })
+      }
+      return json({ ok: false, error: 'locked', by })
+    }
+
+    if (action === 'lancer-unlock') {
+      if (!(await opOk(b.operateur, b.opCode))) return json({ ok: false, error: 'auth' }, 401)
+      const name = (b.operateur ?? '').toString()
+      // Ne libère que si c'est bien cet opérateur qui détient le verrou.
+      await sb.from('demandes').update({ lancer_lock_by: null, lancer_lock_at: null })
+        .eq('id', b.id).eq('lancer_lock_by', name)
+      return json({ ok: true })
+    }
+
     if (action === 'lancer') {
       if (!(await opOk(b.operateur, b.opCode))) return json({ ok: false, error: 'auth' }, 401)
-      const { error } = await sb.from('demandes').update({
+      const name = (b.operateur ?? '').toString()
+      // Refuser si un AUTRE opérateur détient le verrou (non expiré) : protection définitive.
+      const cur = await sb.from('demandes').select('lancer_lock_by, lancer_lock_at').eq('id', b.id).maybeSingle()
+      const by = (cur.data?.lancer_lock_by ?? '').toString()
+      const at = cur.data?.lancer_lock_at ? new Date(cur.data.lancer_lock_at).getTime() : 0
+      const fresh = at > (Date.now() - LOCK_TTL_MS)
+      if (by && by !== name && fresh) return json({ ok: false, error: 'locked', by })
+      const patch: any = {
         statut: 'en_cours', duree_reelle_min: b.duree, en_cours_at: new Date().toISOString(),
-        imprime_at: null, operateur_nom: (b.operateur ?? '').toString(),
-      }).eq('id', b.id)
+        imprime_at: null, operateur_nom: name,
+        lancer_lock_by: null, lancer_lock_at: null, // le lancement libère le verrou
+      }
+      // Poids de matière (g) : mis à jour uniquement s'il est fourni (ne pas écraser à zéro).
+      if (b.poids != null && b.poids !== '') { const p = Number(b.poids); if (!isNaN(p) && p > 0) patch.poids_matiere = p }
+      const { error } = await sb.from('demandes').update(patch).eq('id', b.id)
       if (error) throw error
       return json({ ok: true })
     }
