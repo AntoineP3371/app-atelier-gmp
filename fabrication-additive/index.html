@@ -693,6 +693,23 @@
   </div>
 </div>
 
+<!-- ============ MODALE : lancement d'une impression (visu + durée) ============ -->
+<div class="overlay" id="ovLancer">
+  <div class="modal big">
+    <h2 id="lancerTitle">Lancer l'impression</h2>
+    <div class="meta" id="lancerMeta"></div>
+    <div class="viewer" id="lancerViewer" style="height:48vh"><div class="viewer-empty"><span class="spinner"></span></div></div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px">
+      <button class="btn btn-ghost" onclick="telechargerStep(_lancerId)">⬇ Télécharger le STEP</button>
+      <span class="duree-wrap" style="font-size:.9rem">Durée réelle : <input type="number" id="lancerH" min="0" style="width:64px" placeholder="h"> h <input type="number" id="lancerM" min="0" max="59" style="width:64px" placeholder="min"> min</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-close" onclick="closeLancerModal()">Annuler</button>
+      <button class="btn btn-amber" onclick="validerLancer()">▶️ Valider et lancer</button>
+    </div>
+  </div>
+</div>
+
 <div class="busy" id="busy"><span class="spinner"></span><span class="busy-txt" id="busyTxt">Traitement…</span></div>
 <div class="toast" id="toast"></div>
 
@@ -1090,19 +1107,55 @@ async function openFsViewer(driveId, fichierNom, meta, dmd){
   else { cd.className='fs-countdown'; cd.removeAttribute('data-end'); cd.textContent=''; }
   const cont=document.getElementById('fsViewer');
   if(fsViewer){ try{fsViewer.Destroy();}catch(e){} fsViewer=null; }
-  cont.innerHTML="<div class='viewer-empty'><span class='spinner'></span> &nbsp;Chargement du modèle…</div>";
   openOverlay('ovViewer');
+  fsViewer=await loadStepInto(cont, driveId, fichierNom);
+}
+function closeFsViewer(){ closeOverlay('ovViewer'); if(fsViewer){ try{fsViewer.Destroy();}catch(e){} fsViewer=null; } }
+// Charge un STEP (depuis le Drive) dans un conteneur et renvoie le viewer (ou null si échec).
+async function loadStepInto(cont, driveId, fichierNom){
+  if(!driveId){ cont.innerHTML="<div class='viewer-empty'>❌ Fichier indisponible</div>"; return null; }
+  cont.innerHTML="<div class='viewer-empty'><span class='spinner'></span> &nbsp;Chargement du modèle…</div>";
   try{
     const resp=await fetch(APPS_SCRIPT_URL+'?id='+encodeURIComponent(driveId));
     const j=await resp.json();
     if(!j.ok) throw new Error(j.error||'Fichier introuvable');
     const file=base64ToFile(j.dataB64, fichierNom||j.name||'modele.step', j.mimeType);
     cont.innerHTML='';
-    fsViewer=new OV.EmbeddedViewer(cont,{ backgroundColor:new OV.RGBAColor(238,246,251,255), defaultColor:new OV.RGBColor(0,131,186) });
-    fsViewer.LoadModelFromFileList([file]);
-  }catch(e){ cont.innerHTML="<div class='viewer-empty'>❌ "+esc(e.message)+"</div>"; }
+    const v=new OV.EmbeddedViewer(cont,{ backgroundColor:new OV.RGBAColor(238,246,251,255), defaultColor:new OV.RGBColor(0,131,186) });
+    v.LoadModelFromFileList([file]);
+    return v;
+  }catch(e){ cont.innerHTML="<div class='viewer-empty'>❌ "+esc(e.message)+"</div>"; return null; }
 }
-function closeFsViewer(){ closeOverlay('ovViewer'); if(fsViewer){ try{fsViewer.Destroy();}catch(e){} fsViewer=null; } }
+
+// ── Fenêtre de lancement d'une impression : visu 3D + téléchargement + durée + validation ──
+let lancerViewer=null, _lancerId=null;
+async function openLancerModal(id){
+  const d=demandesById[id]; if(!d) return;
+  _lancerId=id;
+  document.getElementById('lancerTitle').textContent="▶️ Lancer — "+(d.fichier_nom||'');
+  document.getElementById('lancerMeta').textContent="n°"+numeroLabel(d)+" · "+(d.etudiant_prenom+' '+d.etudiant_nom)+" — "+d.projet;
+  const dv=d.duree_reelle_min||0;
+  document.getElementById('lancerH').value = dv>0?Math.floor(dv/60):'';
+  document.getElementById('lancerM').value = dv>0?dv%60:'';
+  openOverlay('ovLancer');
+  const cont=document.getElementById('lancerViewer');
+  if(lancerViewer){ try{lancerViewer.Destroy();}catch(e){} lancerViewer=null; }
+  lancerViewer=await loadStepInto(cont, d.drive_file_id, d.fichier_nom);
+}
+function closeLancerModal(){ closeOverlay('ovLancer'); if(lancerViewer){ try{lancerViewer.Destroy();}catch(e){} lancerViewer=null; } _lancerId=null; }
+async function validerLancer(){
+  const id=_lancerId; if(!id) return;
+  const hh=Math.max(0, Math.round(num(document.getElementById('lancerH').value,0)));
+  const mm=Math.max(0, Math.round(num(document.getElementById('lancerM').value,0)));
+  const duree=hh*60+mm;
+  if(!duree){ showToast('⚠️ Indiquez la durée réelle (heures / minutes) avant de lancer'); return; }
+  busy(true,'Démarrage…');
+  const res=await sb.functions.invoke('demande-op',{ body:{ action:'lancer', id:id, duree:duree, operateur:currentOperateurNom, opCode:_operateurCode } });
+  busy(false);
+  if(res.error || !res.data || !res.data.ok){ showToast('❌ '+((res.data&&res.data.error==='auth')?'Accès refusé':'Erreur')); return; }
+  showToast('▶️ Impression lancée — minuteur démarré ('+duree+' min)');
+  closeLancerModal(); loadOperateur();
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 //  SAISIE DE CODE (générique)
@@ -1411,11 +1464,9 @@ async function loadOperateur(){
     }
     let act="<div class='cell-actions'>"+
       "<button class='btn btn-ghost' onclick='voir3D("+d.id+")'>👁️ 3D</button>"+
-      "<button class='btn btn-ghost' onclick='telechargerStep("+d.id+")'>⬇ STEP</button>"+
       queueBtns+
-      "<span class='duree-wrap' title='Durée réelle d\\'impression'><input type='number' class='op-duree' id='dureeh-"+d.id+"' value='"+dh+"' min='0'> h <input type='number' class='op-duree' id='dureem-"+d.id+"' value='"+dm+"' min='0' max='59'> min</span>"+
       (d.statut!=='attente_info'?"<button class='btn btn-amber' onclick='majStatut("+d.id+",\"attente_info\")' title='Signaler que le demandeur doit venir vous voir pour confirmer des éléments'>🙋 Att. info</button>":"")+
-      "<button class='btn btn-amber' onclick='lancerImpression("+d.id+")'>▶️ Lancer</button>"+
+      "<button class='btn btn-amber' onclick='openLancerModal("+d.id+")'>▶️ Lancer</button>"+
       "<button class='btn btn-green' onclick='majStatut("+d.id+",\"imprimee\")'>✅ Terminée</button>"+
       "<button class='btn btn-ghost' onclick='majStatut("+d.id+",\"validee\")' title='Remettre en attente'>↩︎ Remettre en attente</button>"+
       (d.statut==='imprimee'?"<button class='btn btn-ghost' onclick='archiver("+d.id+")' title='Archiver'>🗄️ Archiver</button>":"")+
@@ -2001,7 +2052,7 @@ window.addEventListener('pageshow', function(e){
   currentEncadrantNom=''; currentOperateurNom=''; currentRole=null;
   // ovSuper fermé directement (sans closeOverlay) pour ne pas déconnecter l'admin au retour arrière.
   document.getElementById('ovSuper').classList.remove('open');
-  ['ovCode','ovEncNom','ovOperateur','ovCodeEnc','ovLimiteDef','ovNotifs','ovMachinesAdmin','ovToutes','ovRenameProj','ovLimites','ovExport','ovStats','ovArchives','ovViewer'].forEach(closeOverlay);
+  ['ovCode','ovEncNom','ovOperateur','ovCodeEnc','ovLimiteDef','ovNotifs','ovMachinesAdmin','ovToutes','ovRenameProj','ovLimites','ovExport','ovStats','ovArchives','ovViewer','ovLancer'].forEach(closeOverlay);
   showView('nouvelle');
 });
 
