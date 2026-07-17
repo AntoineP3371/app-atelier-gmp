@@ -165,7 +165,7 @@
   </div>
 
   <footer>Atelier GMP — IUT Bordeaux</footer>
-  <div class="site-version">v2.11.2</div>
+  <div class="site-version">v2.12.0</div>
 
 <div class="pv-overlay" id="pvOverlay"><div class="pv-modal" id="pvModal"></div></div>
 <div class="pv-toast" id="pvToast"></div>
@@ -217,7 +217,7 @@ async function openOperateurs(){
   const res=await sb.functions.invoke('admin-operators',{ body:{ action:'list', adminCode:_pvAdminPw } });
   if(res.error || !res.data || !res.data.ok){ pvOpen("<h2>👥 Gérer les opérateurs</h2><div class='pv-meta'>Accès refusé — reconnectez-vous.</div><div class='pv-actions'><button class='pv-btn' onclick='pvClose()'>Fermer</button></div>"); return; }
   const ops=res.data.operators||[];
-  let rows=ops.map(o=>opRow(o.name||'',o.phone||'',o.apikey||'',o.code||'')).join('');
+  let rows=ops.map(o=>opRow(o.name||'',o.phone||'',o.apikey||'',o.code||'',o.machines_outils,o.impression_3d)).join('');
   pvOpen(
     "<h2>👥 Gérer les opérateurs</h2>"+
     "<div class='pv-meta'>Nom, WhatsApp (CallMeBot) et code de validation à 4 chiffres. Liste commune à Réservation Machines et Impression 3D.</div>"+
@@ -230,14 +230,21 @@ async function openOperateurs(){
     "<div class='pv-actions'><button class='pv-btn' onclick='pvClose()'>Annuler</button><button class='pv-btn ok' onclick='saveOperateurs()'>✔ Enregistrer</button></div>"
   );
 }
-function opRow(name,phone,apikey,code){
+function opRow(name,phone,apikey,code,mo,i3d){
+  // Défaut (opérateur existant sans info enregistrée) : les deux types cochés.
+  const moC=(mo===undefined||mo===null)?true:!!mo;
+  const i3dC=(i3d===undefined||i3d===null)?true:!!i3d;
   return "<div class='op-row'>"+
     "<div class='r'><input class='op-name' value=\""+esc(name)+"\" placeholder=\"Nom de l'opérateur\"><button class='op-x' onclick=\"this.closest('.op-row').remove()\">✕</button></div>"+
     "<div class='r'><input class='op-phone' value=\""+esc(phone)+"\" placeholder='📱 +336… (WhatsApp)'><input class='op-key' value=\""+esc(apikey)+"\" placeholder='Clé API CallMeBot'><button class='op-test' onclick='pvTestWhatsapp(this)'>▶ Test</button></div>"+
     "<div class='r'><label style='font-size:.8rem;color:var(--muted);white-space:nowrap'>Code validation :</label><input class='op-code' value=\""+esc(code)+"\" maxlength='4' inputmode='numeric' placeholder='4 chiffres'"+(code?'':" style='border-color:var(--danger)'")+">"+(code?'':"<span style='font-size:.76rem;color:var(--danger)'>⚠️ sans code = ne peut pas valider</span>")+"</div>"+
+    "<div class='r' style='gap:16px;flex-wrap:wrap'><span style='font-size:.8rem;color:var(--muted);white-space:nowrap'>Intervient sur :</span>"+
+      "<label style='display:inline-flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer'><input type='checkbox' class='op-mo' style='width:auto'"+(moC?' checked':'')+"> 🛠️ Machines-outils</label>"+
+      "<label style='display:inline-flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer'><input type='checkbox' class='op-i3d' style='width:auto'"+(i3dC?' checked':'')+"> 🖨️ Impression 3D</label>"+
+    "</div>"+
   "</div>";
 }
-function addOpRow(){ document.getElementById('opList').insertAdjacentHTML('beforeend', opRow('','','','')); }
+function addOpRow(){ document.getElementById('opList').insertAdjacentHTML('beforeend', opRow('','','','',true,true)); }
 async function pvTestWhatsapp(btn){
   const row=btn.closest('.op-row');
   const phone=row.querySelector('.op-phone').value.trim();
@@ -253,7 +260,7 @@ async function saveOperateurs(){
   const arr=[];
   document.querySelectorAll('#opList .op-row').forEach(r=>{
     const name=r.querySelector('.op-name').value.trim(); if(!name) return;
-    arr.push({ name, phone:r.querySelector('.op-phone').value.trim(), apikey:r.querySelector('.op-key').value.trim(), code:r.querySelector('.op-code').value.trim() });
+    arr.push({ name, phone:r.querySelector('.op-phone').value.trim(), apikey:r.querySelector('.op-key').value.trim(), code:r.querySelector('.op-code').value.trim(), machines_outils:r.querySelector('.op-mo').checked, impression_3d:r.querySelector('.op-i3d').checked });
   });
   if(!arr.length){ pvToast('⚠️ Ajoutez au moins un opérateur'); return; }
   pvToast('💾 Enregistrement…');

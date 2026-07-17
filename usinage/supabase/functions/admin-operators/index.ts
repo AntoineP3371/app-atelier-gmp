@@ -70,26 +70,39 @@ Deno.serve(async (req) => {
     if (action === 'list') {
       const { data, error } = await sb
         .from('operateurs')
-        .select('name, phone, apikey, code, notif_3d')
+        .select('name, phone, apikey, code, notif_3d, machines_outils, impression_3d')
         .order('name')
       if (error) throw error
       return json({ ok: true, operators: data || [] })
     }
 
     if (action === 'save') {
-      // Conserver notif_3d (géré côté Impression 3D, pas par ce gestionnaire)
+      // Conserver notif_3d et les types de machines quand l'appelant ne les fournit pas
+      // (le gestionnaire de l'usinage n'envoie pas ces champs → on garde les valeurs en base).
       const backup = (await sb.from('operateurs').select('*')).data || []
       const notifByName: Record<string, boolean> = {}
-      for (const o of backup as any[]) notifByName[o.name] = o.notif_3d
+      const moByName: Record<string, boolean> = {}
+      const i3dByName: Record<string, boolean> = {}
+      for (const o of backup as any[]) {
+        notifByName[o.name] = o.notif_3d
+        moByName[o.name] = o.machines_outils
+        i3dByName[o.name] = o.impression_3d
+      }
       const rows = ((operators || []) as any[])
         .filter((o) => o && (o.name ?? '').toString().trim())
-        .map((o) => ({
-          name: o.name.toString().trim(),
-          phone: (o.phone ?? '').toString().trim(),
-          apikey: (o.apikey ?? '').toString().trim(),
-          code: (o.code ?? '').toString().trim(),
-          notif_3d: notifByName[o.name.toString().trim()] ?? true,
-        }))
+        .map((o) => {
+          const nm = o.name.toString().trim()
+          return {
+            name: nm,
+            phone: (o.phone ?? '').toString().trim(),
+            apikey: (o.apikey ?? '').toString().trim(),
+            code: (o.code ?? '').toString().trim(),
+            notif_3d: notifByName[nm] ?? true,
+            // Fourni par l'appelant → appliqué ; sinon valeur en base ; sinon true par défaut.
+            machines_outils: o.machines_outils !== undefined ? !!o.machines_outils : (moByName[nm] ?? true),
+            impression_3d: o.impression_3d !== undefined ? !!o.impression_3d : (i3dByName[nm] ?? true),
+          }
+        })
       const del = await sb.from('operateurs').delete().neq('name', '__never__')
       if (del.error) throw del.error
       if (rows.length) {

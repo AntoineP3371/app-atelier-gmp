@@ -834,11 +834,16 @@ function exportStatsCsv(){
 
 async function loadOperateurs(){
   // Lecture publique : NOMS uniquement (les secrets code/téléphone/clé API ne sont plus exposés au navigateur).
-  const {data,error} = await sb.from('operateurs_public').select('name, notif_3d, has_whatsapp').order('name');
+  let {data,error} = await sb.from('operateurs_public').select('name, notif_3d, has_whatsapp, machines_outils, impression_3d').order('name');
+  if(error){ // vue pas encore mise à jour : on retombe sur l'ancien schéma (tous autorisés)
+    ({data,error} = await sb.from('operateurs_public').select('name, notif_3d, has_whatsapp').order('name'));
+  }
   if(error){ console.error(error); return; }
-  operateurs = (data||[]).map(r=>r.name);
+  // Machines-outils : ne garder que les opérateurs habilités à intervenir sur les machines-outils.
+  const rowsOp = (data||[]).filter(r=>r.machines_outils!==false);
+  operateurs = rowsOp.map(r=>r.name);
   operateursPhone = {};
-  (data||[]).forEach(r=>{ operateursPhone[r.name] = { has_whatsapp: !!r.has_whatsapp }; });
+  rowsOp.forEach(r=>{ operateursPhone[r.name] = { has_whatsapp: !!r.has_whatsapp }; });
   populateOpFilter();
 }
 

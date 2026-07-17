@@ -829,9 +829,14 @@ async function loadEtudiants(){
   buildStudentLists();
 }
 async function loadOperateurs(){
-  // Lecture publique : NOMS uniquement (+ indicateur has_whatsapp). Secrets non exposés au navigateur.
-  const {data,error} = await sb.from('operateurs_public').select('name, notif_3d, has_whatsapp').order('name');
-  operateurs = (!error && data) ? data.map(r=>({name:r.name||'',notif_3d:r.notif_3d!==false,has_whatsapp:!!r.has_whatsapp})) : [];
+  // Lecture publique : NOMS uniquement (+ indicateurs). Secrets non exposés au navigateur.
+  let {data,error} = await sb.from('operateurs_public').select('name, notif_3d, has_whatsapp, machines_outils, impression_3d').order('name');
+  if(error){ // vue pas encore mise à jour : on retombe sur l'ancien schéma (tous autorisés)
+    ({data,error} = await sb.from('operateurs_public').select('name, notif_3d, has_whatsapp').order('name'));
+  }
+  const all = (!error && data) ? data.map(r=>({name:r.name||'',notif_3d:r.notif_3d!==false,has_whatsapp:!!r.has_whatsapp,impression_3d:r.impression_3d!==false,machines_outils:r.machines_outils!==false})) : [];
+  // Impression 3D : ne garder que les opérateurs habilités à intervenir sur l'impression 3D.
+  operateurs = all.filter(o=>o.impression_3d);
 }
 function buildStudentLists(){
   const sel=document.getElementById('fprojet');
