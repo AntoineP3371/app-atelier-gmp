@@ -2007,7 +2007,7 @@ async function rechercherSuivi(silent){
     const fileLine = (d.statut==='validee' && pos) ? "<br>🕒 File d'attente : "+pos+"ᵉ sur "+fileLen : "";
     return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>"+titreDemande(d)+"</div>"+
-    "<div class='dc-meta'>"+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+" · 📄 "+esc(d.fichier_nom)+
+    "<div class='dc-meta'>"+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+(d.bbox?" · 📐 "+esc(d.bbox):"")+" · 📄 "+esc(d.fichier_nom)+
     comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
     suiviLigneEncadrant(d)+
     suiviLigneOperateur(d)+
