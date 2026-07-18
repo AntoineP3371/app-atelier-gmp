@@ -183,6 +183,8 @@
   .op-table tbody tr.st-refusee td{background:#fef2f2}
   .op-table tbody tr.st-attente_info td{background:#fff7ed}
   .com-meta{display:block;font-size:.68rem;color:var(--muted);margin-top:2px}
+  .enc-section{font-weight:700;font-size:1rem;color:var(--primary-dark);background:var(--primary-light);border-radius:8px;padding:8px 12px;margin:16px 0 8px}
+  .enc-section-count{font-weight:400;color:var(--muted);font-size:.85rem}
   .op-table tbody tr.st-en_attente td:first-child,.op-table tbody tr.st-validee td:first-child,.op-table tbody tr.st-en_cours td:first-child,.op-table tbody tr.st-imprimee td:first-child,.op-table tbody tr.st-refusee td:first-child{border-left:4px solid transparent}
   .op-table tbody tr.st-en_attente td:first-child{border-left-color:var(--amber)}
   .op-table tbody tr.st-validee td:first-child{border-left-color:var(--primary)}
@@ -430,7 +432,7 @@
   <section id="view-encadrant" class="view">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <div><h2>Demandes de mes projets — <span id="encNomLabel"></span></h2><div class="sub">Toutes les demandes de vos projets, y compris déjà validées — vous pouvez encore intervenir.</div></div>
+        <div><h2>Demandes de mes projets — <span id="encNomLabel"></span></h2><div class="sub">Suivi de toutes les demandes de vos projets.</div></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <label style="font-size:.8rem;color:var(--muted);font-weight:600">Tri
             <select id="encSort" onchange="setEncSort(this.value)" style="margin-left:4px">
@@ -1354,15 +1356,30 @@ async function loadEncadrant(silent){
   // (projet sans encadrant défini → visible par tous, pour ne pas bloquer les demandes)
   const list=(data||[]).filter(d=>!d.archive).filter(d=>{ const encs=projetEncadrants[d.projet]; return !encs||encs.size===0||encs.has(currentEncadrantNom); });
   if(!list.length){ lastSigEncadrant=null; box.innerHTML="<div class='empty'>Aucune demande pour vos projets 🎉</div>"; return; }
-  // Tri : chronologique (défaut) ou par nom de projet (puis chronologique dans chaque projet)
-  if(_encSort==='projet') list.sort((a,b)=>{ const c=(a.projet||'').localeCompare(b.projet||'','fr'); if(c) return c; return new Date(a.created_at)-new Date(b.created_at); });
+  // Chronologique : la plus récente en haut (created_at décroissant).
+  const parDateDesc=(a,b)=>new Date(b.created_at)-new Date(a.created_at);
+  if(_encSort==='projet') list.sort((a,b)=>{ const c=(a.projet||'').localeCompare(b.projet||'','fr'); if(c) return c; return parDateDesc(a,b); });
+  else list.sort(parDateDesc);
   const sig=_encSort+'|'+list.map(demandeSig).join(';');
   if(sig===lastSigEncadrant) return; // rien n'a changé : pas de ré-affichage
   lastSigEncadrant=sig;
   const savedComments=captureEncComments();
   list.forEach(d=>demandesById[d.id]=d);
-  preserveScroll(box, ()=>{ box.innerHTML=list.map(d=>demandeCardEncadrant(d)).join(''); });
+  // Par projet : sections titrées ; chronologique : liste simple.
+  let contenu;
+  if(_encSort==='projet'){
+    const groups={};
+    list.forEach(d=>{ const p=d.projet||'—'; (groups[p]=groups[p]||[]).push(d); });
+    contenu=Object.keys(groups).sort((a,b)=>a.localeCompare(b,'fr')).map(p=>
+      "<div class='enc-section'>📁 "+esc(p)+" <span class='enc-section-count'>("+groups[p].length+")</span></div>"+
+      groups[p].map(demandeCardEncadrant).join('')
+    ).join('');
+  } else {
+    contenu=list.map(demandeCardEncadrant).join('');
+  }
+  preserveScroll(box, ()=>{ box.innerHTML=contenu; });
   restoreEncComments(savedComments);
+  tickCountdowns(); // met à jour les comptes à rebours « Il reste … » (impressions en cours)
 }
 function demandeCardEncadrant(d){
   const opts=paramTags(d);
@@ -1385,10 +1402,9 @@ function demandeCardEncadrant(d){
     "<div><div class='dc-title'>"+titreDemande(d)+"</div>"+
     "<div class='dc-meta'>"+params+(d.bbox?" · 📐 "+esc(d.bbox):"")+" · 📄 "+esc(d.fichier_nom)+
     comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
-    comLine('🗨️','opérateur', d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at, d.operateur_commentaire)+
-    ligneTraitee(d)+
-    ligneOperee(d)+"</div></div>"+
-    "<div>"+badge(d.statut)+"</div></div>"+
+    suiviLigneEncadrant(d)+
+    suiviLigneOperateur(d)+
+    suiviLigneStatut(d, '')+"</div></div></div>"+
     "<textarea id='enccom-"+d.id+"' class='enc-comment' rows='2' placeholder='Commentaire encadrant (optionnel)…'>"+esc(d.encadrant_commentaire||'')+"</textarea>"+
     "<div class='dc-actions'>"+btns+"</div></div>";
 }
@@ -1398,6 +1414,45 @@ function dateHeureLabel(iso){ if(!iso) return ''; const dt=new Date(iso); return
 function titreDemande(d){ return "Demande n°"+numeroLabel(d)+" faite par "+esc((d.etudiant_prenom||'')+' '+(d.etudiant_nom||''))+" pour le projet "+esc(d.projet||'—')+" le "+dateHeureLabel(d.created_at); }
 function ligneTraitee(d){ return d.encadrant_nom ? "<br>✔️ Traité par "+esc(d.encadrant_nom)+(d.encadrant_valide_at?" le "+dateHeureLabel(d.encadrant_valide_at):"") : ""; }
 function ligneOperee(d){ if(!d.operateur_nom) return ""; const at=d.imprime_at||d.en_cours_at; return "<br>🛠️ Opérée par "+esc(d.operateur_nom)+(at?" le "+dateHeureLabel(at):""); }
+// ── Lignes du SUIVI (étudiant) : « Traitée par … : message » et « Opérée par … : message » ──
+function suiviLigneEncadrant(d){
+  if(!d.encadrant_nom && !d.encadrant_commentaire) return "";
+  const nom=d.encadrant_nom||d.encadrant_commentaire_par||'—';
+  const at=d.encadrant_valide_at||d.encadrant_commentaire_at;
+  return "<br>✔️ <b>Traitée par "+esc(nom)+(at?" le "+dateHeureLabel(at):"")+"</b>"+(d.encadrant_commentaire?" : "+esc(d.encadrant_commentaire):"");
+}
+function suiviLigneOperateur(d){
+  if(!d.operateur_nom && !d.operateur_commentaire) return "";
+  const nom=d.operateur_nom||d.operateur_commentaire_par||'—';
+  const at=d.imprime_at||d.en_cours_at||d.operateur_commentaire_at;
+  return "<br>🛠️ <b>Opérée par "+esc(nom)+(at?" le "+dateHeureLabel(at):"")+"</b>"+(d.operateur_commentaire?" : "+esc(d.operateur_commentaire):"");
+}
+// Couleur du statut (identique aux badges).
+function statutColor(s){
+  return ({en_attente:'var(--amber)', validee:'var(--primary-dark)', en_cours:'#4338ca', imprimee:'#166534', refusee:'var(--danger)', attente_info:'#c2410c'})[s] || 'var(--muted)';
+}
+// Horodatage le plus pertinent pour le statut courant (null si aucun).
+function statutDate(d){
+  return ({imprimee:d.imprime_at, en_cours:d.en_cours_at, validee:d.encadrant_valide_at, refusee:d.encadrant_valide_at, en_attente:d.created_at, attente_info:d.statut_at})[d.statut] || null;
+}
+function suiviLigneStatut(d, fileLine){
+  const col=statutColor(d.statut);
+  const at=statutDate(d);
+  const when = at ? " le "+dateHeureLabel(at) : "";
+  const op = esc(d.operateur_nom||'—');
+  let txt;
+  if(d.statut==='imprimee'){
+    txt="IMPRESSION TERMINÉE"+when+" — Votre pièce est disponible auprès de "+op+", venez le voir.";
+  } else if(d.statut==='attente_info'){
+    txt="EN ATTENTE D'INFORMATION"+when+" — "+op+" a besoin de précisions, venez le voir.";
+  } else if(d.statut==='en_cours'){
+    const end=countdownEnd(d);
+    txt="EN COURS D'IMPRESSION lancée"+when+" — Il reste "+(end?"<span class='countdown' data-end='"+end+"'></span>":"—");
+  } else {
+    txt="📌 "+esc(STATUT_LABEL[d.statut]||d.statut)+when;
+  }
+  return "<br><b style='color:"+col+"'>"+txt+"</b>"+(d.statut==='validee'?(fileLine||''):"");
+}
 // Ligne de commentaire avec auteur identifié et horodatage.
 function comLine(emoji, role, nom, at, txt){
   if(!txt) return '';
@@ -1953,16 +2008,10 @@ async function rechercherSuivi(silent){
     return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>"+titreDemande(d)+"</div>"+
     "<div class='dc-meta'>"+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+" · 📄 "+esc(d.fichier_nom)+
-    fileLine+
-    (d.statut==='attente_info'?"<br><b style='color:#c2410c'>🙋 L'opérateur a besoin de précisions : venez le voir à l'atelier pour confirmer des éléments de votre demande.</b>":"")+
-    (d.statut==='imprimee'?"<br><b style='color:#166534'>✅ Impression terminée, votre pièce est disponible auprès de l'opérateur "+esc(d.operateur_nom||'—')+".</b>":"")+
     comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
-    comLine('💬','encadrant', d.encadrant_commentaire_par||d.encadrant_nom, d.encadrant_commentaire_at||d.encadrant_valide_at, d.encadrant_commentaire)+
-    comLine('🗨️','opérateur', d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at, d.operateur_commentaire)+
-    ligneTraitee(d)+
-    ligneOperee(d)+"</div></div>"+
-    "<div style='text-align:right'>"+badge(d.statut)+(end?"<div class='countdown' data-end='"+end+"'></div>":"")+"</div>"+
-    "</div></div>";
+    suiviLigneEncadrant(d)+
+    suiviLigneOperateur(d)+
+    suiviLigneStatut(d, fileLine)+"</div></div></div></div>";
   }).join('');
   preserveScroll(box, ()=>{ box.innerHTML=html; });
   tickCountdowns();

@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
 
     if (action === 'statut') {
       if (!(await opOk(b.operateur, b.opCode))) return json({ ok: false, error: 'auth' }, 401)
-      const patch: any = { statut: b.statut, operateur_nom: (b.operateur ?? '').toString() }
+      const patch: any = { statut: b.statut, operateur_nom: (b.operateur ?? '').toString(), statut_at: new Date().toISOString() }
       if (b.statut === 'imprimee') patch.imprime_at = new Date().toISOString()
       if (b.statut === 'validee') { patch.en_cours_at = null; patch.imprime_at = null }
       const { error } = await sb.from('demandes').update(patch).eq('id', b.id)
