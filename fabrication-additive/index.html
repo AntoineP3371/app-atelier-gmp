@@ -823,6 +823,16 @@ function paramTags(d){ const opts=[]; if(d.taraudage)opts.push('Taraudage'); if(
 function fmtRestant(ms){ if(ms<=0) return 'terminé'; const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60; return (h>0?h+'h':'')+(m<10&&h>0?'0':'')+m+'m'+(sec<10?'0':'')+sec+'s'; }
 function fmtDuree(min){ min=Math.round(min||0); const h=Math.floor(min/60), m=min%60; return h>0 ? (h+'h'+(m<10?'0':'')+m) : (m+' min'); }
 function fmtPoids(g){ g=Number(g)||0; return g>=1000 ? (g/1000).toFixed(g%1000?1:0)+' kg' : (Math.round(g*10)/10)+' g'; }
+// Liste (texte) de tous les encadrants du projet, d'après la liste des étudiants.
+function encadrantsProjet(projet){ const s=projetEncadrants[projet]; return (s && s.size) ? [...s].join(', ') : ''; }
+// Idem en HTML, avec l'encadrant validateur (validateur) mis en gras.
+function encadrantsProjetHtml(projet, validateur){
+  const s=projetEncadrants[projet];
+  const names=(s && s.size) ? [...s] : [];
+  if(validateur && !names.includes(validateur)) names.unshift(validateur);
+  if(!names.length) return '—';
+  return names.map(n=> (validateur && n===validateur) ? "<b>"+esc(n)+"</b>" : esc(n)).join(', ');
+}
 function countdownEnd(d){ if(d.statut!=='en_cours' || !d.en_cours_at || !d.duree_reelle_min) return null; return new Date(d.en_cours_at).getTime() + d.duree_reelle_min*60000; }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1164,7 +1174,7 @@ async function openLancerModal(id){
   }
   _lancerId=id;
   document.getElementById('lancerTitle').textContent="🖐️ Je m'en occupe — "+(d.fichier_nom||'');
-  document.getElementById('lancerMeta').textContent="n°"+numeroLabel(d)+" · "+(d.etudiant_prenom+' '+d.etudiant_nom)+" — "+d.projet;
+  document.getElementById('lancerMeta').textContent="n°"+numeroLabel(d)+" · "+(d.etudiant_prenom+' '+d.etudiant_nom)+" — "+d.projet+(d.bbox?" · 📐 "+d.bbox:"")+(encadrantsProjet(d.projet)?" · 👨‍🏫 "+encadrantsProjet(d.projet):"");
   document.getElementById('lancerAttInfo').style.display = (d.statut==='attente_info')?'none':'';
   const dv=d.duree_reelle_min||0;
   document.getElementById('lancerH').value = dv>0?Math.floor(dv/60):'';
@@ -1383,7 +1393,7 @@ async function loadEncadrant(silent){
 }
 function demandeCardEncadrant(d){
   const opts=paramTags(d);
-  const params=machineLabel(d.machine)+" · "+esc(tempsLabel(d))+" · "+(d.finition==='finition'?'Finition':'Brouillon')+(opts.length?" · "+esc(opts.join(', ')):"");
+  const params=machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+" · "+(d.finition==='finition'?'Finition':'Brouillon')+(opts.length?" · "+esc(opts.join(', ')):"");
   // Actions selon le statut : intervention possible a posteriori.
   //  - en_attente : Valider / Refuser
   //  - validee    : Refuser (annule la validation) + maj du commentaire
@@ -1401,6 +1411,7 @@ function demandeCardEncadrant(d){
   return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>"+titreDemande(d)+"</div>"+
     "<div class='dc-meta'>"+params+(d.bbox?" · 📐 "+esc(d.bbox):"")+" · 📄 "+esc(d.fichier_nom)+
+    (encadrantsProjet(d.projet)?"<br>👨‍🏫 Encadrants du projet : "+esc(encadrantsProjet(d.projet)):"")+
     comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
     suiviLigneEncadrant(d)+
     suiviLigneOperateur(d)+
@@ -1601,11 +1612,11 @@ async function loadOperateur(){
       "</div>";
     return "<tr class='st-"+d.statut+"'>"+
       "<td data-label='Projet'><b>"+esc(d.projet)+"</b><br><span style='color:var(--muted);font-size:.78rem'>"+esc(d.fichier_nom)+"</span><br><span class='com-meta'>📅 "+dateHeureLabel(d.created_at)+"</span>"+
-        "<div class='op-mob-info'>N° "+numeroLabel(d)+" · 👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · 🎓 "+esc(d.encadrant_nom||'—')+"</div></td>"+
+        "<div class='op-mob-info'>N° "+numeroLabel(d)+" · 👤 "+esc(d.etudiant_prenom+' '+d.etudiant_nom)+" · 👨‍🏫 "+encadrantsProjetHtml(d.projet, d.encadrant_nom)+"</div></td>"+
       "<td data-label='N°' class='op-hide-mob'>"+numeroLabel(d)+"</td>"+
       "<td data-label='Étudiant' class='op-hide-mob'>"+esc(d.etudiant_prenom+' '+d.etudiant_nom)+"</td>"+
-      "<td data-label='Encadrant' class='op-hide-mob'>"+esc(d.encadrant_nom||'—')+"</td>"+
-      "<td data-label='Paramètres'>"+params+"</td>"+
+      "<td data-label='Encadrants du projet' class='op-hide-mob'>"+encadrantsProjetHtml(d.projet, d.encadrant_nom)+"</td>"+
+      "<td data-label='Paramètres'>"+params+(d.bbox?"<br>📐 "+esc(d.bbox):"")+"</td>"+
       "<td data-label='Comm. étudiant' class='cell-comment'>"+(d.notes?esc(d.notes)+comMeta((d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at):'—')+"</td>"+
       "<td data-label='Comm. encadrant' class='cell-comment'>"+(d.encadrant_commentaire?esc(d.encadrant_commentaire)+comMeta(d.encadrant_commentaire_par||d.encadrant_nom, d.encadrant_commentaire_at||d.encadrant_valide_at):'—')+"</td>"+
       "<td data-label='Comm. opérateur' class='cell-comment'>"+(d.operateur_commentaire?esc(d.operateur_commentaire)+comMeta(d.operateur_commentaire_par||d.operateur_nom, d.operateur_commentaire_at):'—')+
@@ -1619,7 +1630,7 @@ async function loadOperateur(){
   const oldTbody=box.querySelector('.op-table tbody');
   const savedCarousel=oldTbody?oldTbody.scrollLeft:0;
   preserveScroll(wrap, ()=>{
-    box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrant</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Comm. opérateur</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+    box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrants du projet</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Comm. opérateur</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
   });
   const newTbody=box.querySelector('.op-table tbody');
   if(newTbody && savedCarousel) newTbody.scrollLeft=savedCarousel;
@@ -2008,6 +2019,7 @@ async function rechercherSuivi(silent){
     return "<div class='demande-card st-"+d.statut+"'><div class='dc-top'>"+
     "<div><div class='dc-title'>"+titreDemande(d)+"</div>"+
     "<div class='dc-meta'>"+machineLabel(d.machine)+" · ⏱️ "+esc(tempsLabel(d))+(d.bbox?" · 📐 "+esc(d.bbox):"")+" · 📄 "+esc(d.fichier_nom)+
+    (encadrantsProjet(d.projet)?"<br>👨‍🏫 Encadrants du projet : "+esc(encadrantsProjet(d.projet)):"")+
     comLine('📝','étudiant', (d.etudiant_prenom||'')+' '+(d.etudiant_nom||''), d.created_at, d.notes)+
     suiviLigneEncadrant(d)+
     suiviLigneOperateur(d)+
