@@ -235,6 +235,21 @@
   .stat-card{flex:1;min-width:100px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 10px;text-align:center}
   .stat-card.ok{background:#f0fdf4;border-color:#86efac}
   .stat-card.ko{background:#fef2f2;border-color:#fca5a5}
+  /* Récap opérateur : cases colorées selon leur statut (mêmes teintes que les badges) */
+  .stat-card.rec-validee{background:var(--primary-light);border-color:var(--primary)}
+  .stat-card.rec-validee .stat-num{color:var(--primary-dark)}
+  .stat-card.rec-attente_info{background:#ffedd5;border-color:#f0a868}
+  .stat-card.rec-attente_info .stat-num{color:#c2410c}
+  .stat-card.rec-en_cours{background:#e0e7ff;border-color:#a5b4fc}
+  .stat-card.rec-en_cours .stat-num{color:#4338ca}
+  .stat-card.rec-imprimee{background:var(--green-light);border-color:var(--green)}
+  .stat-card.rec-imprimee .stat-num{color:var(--green)}
+  .stat-card.rec-archivee{background:var(--bg);border-color:var(--muted)}
+  .stat-card.rec-archivee .stat-num{color:var(--muted)}
+  :root[data-theme="dark"] .stat-card.rec-attente_info{background:#33260f;border-color:#7a4a1f}
+  :root[data-theme="dark"] .stat-card.rec-attente_info .stat-num{color:#f0a868}
+  :root[data-theme="dark"] .stat-card.rec-en_cours{background:#191c33;border-color:#3d4374}
+  :root[data-theme="dark"] .stat-card.rec-en_cours .stat-num{color:#a5b4fc}
   .stat-num{font-size:1.5rem;font-weight:800;color:var(--text)}
   .stat-cap{font-size:.72rem;color:var(--muted);margin-top:2px}
   .stat-block{margin:14px 0}
@@ -1766,12 +1781,30 @@ function ordreFile(a,b){
   if(a.statut==='imprimee'){ return new Date(b.imprime_at||b.created_at)-new Date(a.imprime_at||a.created_at); }
   return new Date(a.created_at)-new Date(b.created_at);
 }
+// Récap en cases (comme les Statistiques) affiché en tête de la fenêtre opérateur.
+// Compté sur toutes les demandes chargées (validee/attente_info/en_cours/imprimee) :
+// les 4 premiers comptes excluent les archivées ; « Archivées » les compte à part.
+function opRecapHtml(all){
+  const cnt={validee:0,attente_info:0,en_cours:0,imprimee:0};
+  let archivees=0;
+  all.forEach(d=>{ if(d.archive){ archivees++; } else if(cnt[d.statut]!=null){ cnt[d.statut]++; } });
+  const cardOp=(lab,val,cls)=>"<div class='stat-card "+(cls||'')+"'><div class='stat-num'>"+val+"</div><div class='stat-cap'>"+lab+"</div></div>";
+  return "<div class='stat-cards'>"+
+    cardOp('Validées',cnt.validee,'rec-validee')+
+    cardOp('Attente info',cnt.attente_info,'rec-attente_info')+
+    cardOp('En cours',cnt.en_cours,'rec-en_cours')+
+    cardOp('Terminées',cnt.imprimee,'rec-imprimee')+
+    cardOp('Archivées',archivees,'rec-archivee')+
+    "</div>";
+}
 async function loadOperateur(){
   const box=document.getElementById('operateurResults');
   const res=await sb.from('demandes').select('*').in('statut',['validee','en_cours','imprimee','attente_info']);
   if(res.error){ box.innerHTML="<div class='empty'>Erreur : "+esc(res.error.message)+"</div>"; return; }
-  const data=(res.data||[]).filter(d=>!d.archive); // filtrage archive côté client (résilient si la colonne n'existe pas encore)
-  if(!data.length){ lastSigOperateur=null; box.innerHTML="<div class='empty'>Aucune impression à traiter pour le moment.</div>"; updateOpCounter(); return; }
+  const all=res.data||[];
+  const recap=opRecapHtml(all);
+  const data=all.filter(d=>!d.archive); // filtrage archive côté client (résilient si la colonne n'existe pas encore)
+  if(!data.length){ lastSigOperateur=null; box.innerHTML=recap+"<div class='empty'>Aucune impression à traiter pour le moment.</div>"; updateOpCounter(); return; }
   data.sort(ordreFile);
   data.forEach(d=>demandesById[d.id]=d);
   // Positions dans la file (parmi les demandes validées, dans l'ordre)
@@ -1828,7 +1861,7 @@ async function loadOperateur(){
   const oldTbody=box.querySelector('.op-table tbody');
   const savedCarousel=oldTbody?oldTbody.scrollLeft:0;
   preserveScroll(wrap, ()=>{
-    box.innerHTML="<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrants du projet</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Comm. opérateur</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
+    box.innerHTML=recap+"<div class='table-wrap'><table class='op-table'><thead><tr><th>Projet / Fichier</th><th>N°</th><th>Étudiant</th><th>Encadrants du projet</th><th>Paramètres</th><th>Comm. étudiant</th><th>Comm. encadrant</th><th>Comm. opérateur</th><th>Statut</th><th>Actions</th></tr></thead><tbody>"+rows+"</tbody></table></div>";
   });
   const newTbody=box.querySelector('.op-table tbody');
   if(newTbody && savedCarousel) newTbody.scrollLeft=savedCarousel;
@@ -2065,9 +2098,9 @@ async function loadStats(){
     crossKeys.forEach(m=>{
       const c=cross[m];
       ['total','brouillon','finition','usinage','sansUsinage','poids'].forEach(k=>tot[k]+=c[k]);
-      crossHtml+="<tr><td><b>"+esc(m)+"</b></td><td>"+c.total+"</td><td>"+c.brouillon+"</td><td>"+c.finition+"</td><td>"+c.usinage+"</td><td>"+c.sansUsinage+"</td><td>"+fmtPoids(c.poids)+"</td></tr>";
+      crossHtml+="<tr><td data-label='Machine'><b>"+esc(m)+"</b></td><td data-label='Total'>"+c.total+"</td><td data-label='Brouillon'>"+c.brouillon+"</td><td data-label='Finition'>"+c.finition+"</td><td data-label='Avec usinage'>"+c.usinage+"</td><td data-label='Sans usinage'>"+c.sansUsinage+"</td><td data-label='Matière'>"+fmtPoids(c.poids)+"</td></tr>";
     });
-    crossHtml+="<tr style='font-weight:700;border-top:2px solid var(--border)'><td>Total</td><td>"+tot.total+"</td><td>"+tot.brouillon+"</td><td>"+tot.finition+"</td><td>"+tot.usinage+"</td><td>"+tot.sansUsinage+"</td><td>"+fmtPoids(tot.poids)+"</td></tr>";
+    crossHtml+="<tr style='font-weight:700;border-top:2px solid var(--border)'><td data-label='Machine'>Total</td><td data-label='Total'>"+tot.total+"</td><td data-label='Brouillon'>"+tot.brouillon+"</td><td data-label='Finition'>"+tot.finition+"</td><td data-label='Avec usinage'>"+tot.usinage+"</td><td data-label='Sans usinage'>"+tot.sansUsinage+"</td><td data-label='Matière'>"+fmtPoids(tot.poids)+"</td></tr>";
     crossHtml+="</tbody></table></div></div>";
   }
   html+=crossHtml;
