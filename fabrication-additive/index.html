@@ -555,7 +555,6 @@
         <div class="op-toolbar-btns">
           <button class="btn btn-ghost" onclick="openStats()">📈 Statistiques</button>
           <button class="btn btn-ghost" onclick="openArchives()">🗄️ Archives</button>
-          <button class="btn btn-ghost" onclick="openExport()">📥 Export CSV</button>
           <button class="btn btn-ghost" onclick="openLimites()">📊 Limites par projet</button>
         </div>
       </div>
@@ -740,7 +739,7 @@
       <div class="form-group" style="max-width:150px;justify-content:flex-end"><button class="btn btn-ok" onclick="loadStats()">Actualiser</button></div>
     </div>
     <div id="statsBody"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
-    <div class="modal-actions"><button class="btn btn-close" onclick="closeOverlay('ovStats')">Fermer</button></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="exporterCSV()">📥 Export CSV</button><button class="btn btn-close" onclick="closeOverlay('ovStats')">Fermer</button></div>
   </div>
 </div>
 
@@ -768,21 +767,6 @@
   </div>
 </div>
 
-<!-- ============ MODALE : export CSV (opérateur) ============ -->
-<div class="overlay" id="ovExport">
-  <div class="modal">
-    <h2>📥 Export CSV des impressions</h2>
-    <div class="meta">Choisissez la période (basée sur la date de dépôt des demandes).</div>
-    <div class="form-row">
-      <div class="form-group"><label>Du</label><input type="date" id="expDu"></div>
-      <div class="form-group"><label>Au</label><input type="date" id="expAu"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-close" onclick="closeOverlay('ovExport')">Annuler</button>
-      <button class="btn btn-ok" onclick="exporterCSV()">📥 Exporter</button>
-    </div>
-  </div>
-</div>
 
 <!-- ============ MODALE : viewer 3D plein écran ============ -->
 <div class="overlay" id="ovViewer">
@@ -2109,15 +2093,10 @@ async function loadStats(){
   html+=statBars("Top 10 projets", projEntries, {temps:true});
   box.innerHTML=html || "<div class='empty'>Aucune donnée sur cette période.</div>";
 }
-function openExport(){
-  const au=new Date(), du=new Date(); du.setDate(du.getDate()-30);
-  document.getElementById('expAu').value=isoDate(au);
-  document.getElementById('expDu').value=isoDate(du);
-  openOverlay('ovExport');
-}
 function csvCell(v){ v=(v==null?'':String(v)); return /[";\n\r]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
 async function exporterCSV(){
-  const du=document.getElementById('expDu').value, au=document.getElementById('expAu').value;
+  // Utilise la période de la fenêtre Statistiques (Du = 1er septembre précédent par défaut).
+  const du=document.getElementById('stDu').value, au=document.getElementById('stAu').value;
   if(!du || !au){ showToast('⚠️ Choisissez les deux dates'); return; }
   busy(true,'Export…');
   const {data,error}=await sb.from('demandes').select('*')
@@ -2147,7 +2126,7 @@ async function exporterCSV(){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download='impressions_'+du+'_au_'+au+'.csv';
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
-  closeOverlay('ovExport'); showToast('✅ '+data.length+' demande(s) exportée(s)');
+  showToast('✅ '+data.length+' demande(s) exportée(s)');
 }
 
 // ── Liste totale des demandes (admin) : toutes, y compris archivées, ordre chronologique ──
@@ -2427,7 +2406,7 @@ window.addEventListener('pageshow', function(e){
   currentEncadrantNom=''; currentOperateurNom=''; currentRole=null;
   // ovSuper fermé directement (sans closeOverlay) pour ne pas déconnecter l'admin au retour arrière.
   document.getElementById('ovSuper').classList.remove('open');
-  ['ovCode','ovEncNom','ovOperateur','ovCodeEnc','ovLimiteDef','ovNotifs','ovMachinesAdmin','ovToutes','ovRenameProj','ovLimites','ovExport','ovStats','ovArchives','ovViewer','ovLancer','ovConfirm'].forEach(closeOverlay);
+  ['ovCode','ovEncNom','ovOperateur','ovCodeEnc','ovLimiteDef','ovNotifs','ovMachinesAdmin','ovToutes','ovRenameProj','ovLimites','ovStats','ovArchives','ovViewer','ovLancer','ovConfirm'].forEach(closeOverlay);
   showView('nouvelle');
 });
 
