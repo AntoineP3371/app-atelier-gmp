@@ -50,6 +50,8 @@ alter table public.demandes add column if not exists duree_reelle_min     intege
 alter table public.demandes add column if not exists operateur_nom        text default '';
 alter table public.demandes add column if not exists archive              boolean default false;  -- demande archivée (retirée du tableau opérateur)
 alter table public.demandes add column if not exists priorite             integer default 0;      -- ordre dans la file d'attente d'impression
+alter table public.demandes add column if not exists photo_file_id        text default '';        -- ID Drive de la photo de la pièce terminée
+alter table public.demandes add column if not exists photo_link           text default '';        -- lien Drive de la photo de la pièce terminée
 
 -- Index pour le suivi étudiant (recherche par nom/prénom) et les listes
 create index if not exists demandes_statut_idx  on public.demandes (statut);

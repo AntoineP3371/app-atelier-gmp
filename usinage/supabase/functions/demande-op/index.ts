@@ -166,6 +166,16 @@ Deno.serve(async (req) => {
       return json({ ok: true })
     }
 
+    // Enregistrement de la photo de la pièce (id + lien Drive), auth opérateur.
+    if (action === 'photo') {
+      if (!(await opOk(b.operateur, b.opCode))) return json({ ok: false, error: 'auth' }, 401)
+      const { error } = await sb.from('demandes')
+        .update({ photo_file_id: (b.photoFileId ?? null), photo_link: (b.photoLink ?? null) })
+        .eq('id', b.id)
+      if (error) throw error
+      return json({ ok: true })
+    }
+
     if (action === 'archive') {
       if (!(await opOk(b.operateur, b.opCode))) return json({ ok: false, error: 'auth' }, 401)
       const { error } = await sb.from('demandes').update({ archive: !!b.archive }).eq('id', b.id)

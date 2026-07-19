@@ -19,6 +19,8 @@
 var FOLDER_ID = 'COLLEZ_ICI_L_ID_DU_DOSSIER_DRIVE';
 
 // -------- Dépôt d'un fichier (upload) --------------------------------------
+// body.replaceByName (optionnel) : si true, supprime d'abord les fichiers
+// existants du même nom dans le dossier (utilisé pour remplacer une photo de pièce).
 function doPost (e) {
   try {
     var body = JSON.parse(e.postData.contents);
@@ -26,11 +28,17 @@ function doPost (e) {
     var mimeType = body.mimeType || 'application/octet-stream';
     var dataB64  = body.dataB64  || '';
 
+    var folder = DriveApp.getFolderById(FOLDER_ID);
+
+    // Remplacement : met à la corbeille les anciens fichiers du même nom.
+    if (body.replaceByName) {
+      var existants = folder.getFilesByName(name);
+      while (existants.hasNext()) { existants.next().setTrashed(true); }
+    }
+
     var bytes = Utilities.base64Decode(dataB64);
     var blob  = Utilities.newBlob(bytes, mimeType, name);
-
-    var folder = DriveApp.getFolderById(FOLDER_ID);
-    var file   = folder.createFile(blob);
+    var file  = folder.createFile(blob);
 
     // Lien de consultation (lecture pour toute personne disposant du lien)
     try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (err) {}
