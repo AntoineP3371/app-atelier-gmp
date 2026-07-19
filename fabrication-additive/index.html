@@ -187,20 +187,22 @@
   .com-meta{display:block;font-size:.68rem;color:var(--muted);margin-top:2px}
   .enc-section{font-weight:700;font-size:1rem;color:var(--primary-dark);background:var(--primary-light);border-radius:8px;padding:8px 12px;margin:16px 0 8px}
   .enc-section-count{font-weight:400;color:var(--muted);font-size:.85rem}
-  .op-table tbody tr.st-en_attente td:first-child,.op-table tbody tr.st-validee td:first-child,.op-table tbody tr.st-en_cours td:first-child,.op-table tbody tr.st-imprimee td:first-child,.op-table tbody tr.st-refusee td:first-child{border-left:4px solid transparent}
+  .op-table tbody tr.st-en_attente td:first-child,.op-table tbody tr.st-validee td:first-child,.op-table tbody tr.st-en_cours td:first-child,.op-table tbody tr.st-imprimee td:first-child,.op-table tbody tr.st-refusee td:first-child,.op-table tbody tr.st-attente_info td:first-child{border-left:4px solid transparent}
   .op-table tbody tr.st-en_attente td:first-child{border-left-color:var(--amber)}
   .op-table tbody tr.st-validee td:first-child{border-left-color:var(--primary)}
   .op-table tbody tr.st-en_cours td:first-child{border-left-color:#4338ca}
   .op-table tbody tr.st-imprimee td:first-child{border-left-color:var(--green)}
   .op-table tbody tr.st-refusee td:first-child{border-left-color:var(--danger)}
+  .op-table tbody tr.st-attente_info td:first-child{border-left-color:#ea580c}
   @media(max-width:640px){
-    .op-table tbody tr.st-en_attente,.op-table tbody tr.st-validee,.op-table tbody tr.st-en_cours,.op-table tbody tr.st-imprimee,.op-table tbody tr.st-refusee{border-left-width:5px}
+    .op-table tbody tr.st-en_attente,.op-table tbody tr.st-validee,.op-table tbody tr.st-en_cours,.op-table tbody tr.st-imprimee,.op-table tbody tr.st-refusee,.op-table tbody tr.st-attente_info{border-left-width:5px}
     .op-table tbody tr.st-en_attente{background:#fffbeb;border-left-color:var(--amber)}
     .op-table tbody tr.st-validee{background:#f0f9ff;border-left-color:var(--primary)}
     .op-table tbody tr.st-en_cours{background:#eef2ff;border-left-color:#4338ca}
     .op-table tbody tr.st-imprimee{background:#f0fdf4;border-left-color:var(--green)}
     .op-table tbody tr.st-refusee{background:#fef2f2;border-left-color:var(--danger)}
-    .op-table tbody tr.st-en_attente td,.op-table tbody tr.st-validee td,.op-table tbody tr.st-en_cours td,.op-table tbody tr.st-imprimee td,.op-table tbody tr.st-refusee td{background:transparent}
+    .op-table tbody tr.st-attente_info{background:#fff7ed;border-left-color:#ea580c}
+    .op-table tbody tr.st-en_attente td,.op-table tbody tr.st-validee td,.op-table tbody tr.st-en_cours td,.op-table tbody tr.st-imprimee td,.op-table tbody tr.st-refusee td,.op-table tbody tr.st-attente_info td{background:transparent}
   }
   .demande-card .dc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
   .demande-card .dc-title{font-weight:700}
