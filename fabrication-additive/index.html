@@ -1192,7 +1192,8 @@ async function finishPrint(){
   // Nom de la photo = nom du STEP sans extension + .jpg (ex. Robot_5.jpg), sinon 'piece_<id>'
   const base=(d&&d.fichier_nom)?d.fichier_nom.replace(/\.[^.]+$/,''):('piece_'+id);
   _photoDemande={id:id, nomBase:base};
-  await majStatut(id,'imprimee'); // ferme la fenêtre « Je m'en occupe »
+  await majStatut(id,'imprimee');
+  closeLancerModal(); // ferme la fenêtre « Je m'en occupe » (et libère le verrou) avant la proposition photo
   document.getElementById('photoAskMeta').textContent="Impression n°"+(d?numeroLabel(d):id)+" marquée terminée. Vous pouvez ajouter une photo de la pièce (facultatif).";
   document.getElementById('photoInput').value=''; // réinitialise pour rouvrir le même fichier au besoin
   openOverlay('ovPhotoAsk');
