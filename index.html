@@ -155,6 +155,20 @@
 </style>
 </head>
 <body>
+<!-- Blocage du mode paysage sur mobile : portrait obligatoire (n'affecte pas tablettes/PC via max-height) -->
+<style>
+  .rotate-lock{display:none}
+  @media (orientation:landscape) and (max-height:500px){
+    body>*:not(.rotate-lock){display:none!important}
+    .rotate-lock{display:flex;position:fixed;inset:0;z-index:2147483647;align-items:center;justify-content:center;text-align:center;padding:24px;background:var(--surface,#ffffff);color:var(--text,#13303d)}
+    .rotate-lock-inner{max-width:420px}
+    .rotate-lock-emoji{font-size:3rem;line-height:1;margin-bottom:16px;animation:rotateLockHint 2.2s ease-in-out infinite}
+    .rotate-lock-title{font-size:1.15rem;font-weight:800;margin-bottom:8px}
+    .rotate-lock-text{font-size:.92rem;opacity:.78}
+  }
+  @keyframes rotateLockHint{0%,55%,100%{transform:rotate(0)}28%{transform:rotate(-90deg)}}
+</style>
+<div class="rotate-lock" aria-hidden="true"><div class="rotate-lock-inner"><div class="rotate-lock-emoji">📱</div><div class="rotate-lock-title">Tournez votre appareil</div><div class="rotate-lock-text">Cette page s'utilise en mode portrait sur mobile. Merci de mettre votre téléphone à la verticale.</div></div></div>
   <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" aria-label="Basculer le thème clair ou sombre" title="Thème clair / sombre">🌙</button>
   <script>
     function applyThemeIcon(){ var d=document.documentElement.getAttribute('data-theme')==='dark'; var b=document.getElementById('themeToggle'); if(b) b.textContent=d?'☀️':'🌙'; }
@@ -223,7 +237,7 @@
   </div>
 
   <footer>Atelier GMP — IUT Bordeaux</footer>
-  <div class="site-version">v3.1.6</div>
+  <div class="site-version">v3.1.7</div>
 
 <div class="pv-overlay" id="pvOverlay"><div class="pv-modal" id="pvModal"></div></div>
 <div class="pv-toast" id="pvToast"></div>
