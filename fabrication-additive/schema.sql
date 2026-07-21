@@ -91,10 +91,49 @@ drop policy if exists demandes_all on public.demandes;
 create policy demandes_all on public.demandes
   for all using (true) with check (true);
 
--- Paramètres : lecture + mise à jour (admin) pour la clé anon
+-- Paramètres : politique D'ORIGINE (avant la sécurisation par Edge Functions).
+-- ⚠️ À NE PAS REJOUER TEL QUEL sur la base actuelle : « using (true) » rendrait la table
+-- 'parametres' lisible directement par la clé anon (code_encadrant, et le hash admin dès
+-- qu'il existe), court-circuitant la vue parametres_public. Depuis la sécurisation, toutes
+-- les écritures passent par les Edge Functions (service role) et les applis lisent
+-- uniquement la vue. Vérifier l'état réel avant toute recréation :
+--   select tablename, policyname, cmd, qual from pg_policies where schemaname='public';
 drop policy if exists parametres_all on public.parametres;
 create policy parametres_all on public.parametres
   for all using (true) with check (true);
+
+-- ---------- Vues publiques (lecture anon) --------------------------------
+-- Les applis ne lisent JAMAIS les tables 'operateurs' et 'parametres' directement :
+-- elles passent par ces deux vues, qui n'exposent qu'un sous-ensemble sûr.
+-- Les vues sont volontairement en SECURITY DEFINER (comportement par défaut d'une vue
+-- Postgres) : c'est ce qui permet à la clé anon de les lire alors que les tables
+-- sous-jacentes restent verrouillées. NE PAS passer en security_invoker : il faudrait
+-- alors ouvrir les tables elles-mêmes à anon (codes opérateurs, hash admin) = pire.
+-- L'advisor Supabase signale « Security Definer View » sur ces deux vues : faux positif
+-- assumé, tant que les colonnes exposées restent celles ci-dessous.
+
+-- Opérateurs : ni le code à 4 chiffres, ni le téléphone, ni la clé API ne sortent.
+-- 'has_whatsapp' est un booléen CALCULÉ côté serveur (pas les valeurs).
+create or replace view public.operateurs_public as
+select name,
+       notif_3d,
+       coalesce(phone, '') <> '' and coalesce(apikey, '') <> '' as has_whatsapp,
+       machines_outils,
+       impression_3d
+from public.operateurs;
+
+-- Paramètres : LISTE D'AUTORISATION (et non d'exclusion). Ne jamais repasser à un
+-- « where cle <> ALL (...) » : une nouvelle clé sensible fuiterait silencieusement.
+-- C'est arrivé avec 'admin_pw_hash' (écrit par l'Edge Function admin-op quand le super
+-- admin change le mot de passe) — corrigé en juillet 2026.
+-- Ces 4 clés sont exactement celles que l'appli lit (loadParams / PARAMS.*).
+create or replace view public.parametres_public as
+select cle, valeur
+from public.parametres
+where cle in ('machines', 'limite_defaut', 'limites_projets', 'operateurs_impression');
+
+grant select on public.operateurs_public to anon, authenticated;
+grant select on public.parametres_public to anon, authenticated;
 
 -- ---------- Realtime (rafraîchissement discret des écrans opérateur/encadrant/suivi) ---------
 -- Ajoute les tables à la publication realtime si pas déjà fait (etudiants et operateurs
