@@ -1,0 +1,29 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Tous les 2 jours à 06:00 UTC
+    - cron: "0 6 */2 * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TABLE: ${{ secrets.SUPABASE_TABLE }}
+        run: |
+          code=$(curl -s -o /tmp/out.txt -w "%{http_code}" \
+            "${SUPABASE_URL}/rest/v1/${TABLE}?select=*&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+          echo "HTTP $code"
+          cat /tmp/out.txt
+          if [ "$code" -ge 400 ]; then
+            echo "Ping échoué"
+            exit 1
+          fi
+          echo "Projet Supabase maintenu actif."
